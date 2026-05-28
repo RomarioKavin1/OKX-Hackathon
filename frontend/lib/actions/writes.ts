@@ -124,12 +124,40 @@ export function buyListing(wallet: WalletClient, tokenId: bigint, from?: Address
     args: [tokenId], account: sender(wallet, from), chain: ACTIVE_CHAIN,
   });
 }
+/** Cancel a standing marketplace listing. Real ABI: Marketplace.cancel(uint256 tokenId). */
+export function cancelListing(wallet: WalletClient, tokenId: bigint, from?: Address): Promise<Hex> {
+  return wallet.writeContract({
+    address: ADDRESSES.Marketplace, abi: MarketplaceAbi, functionName: "cancel",
+    args: [tokenId], account: sender(wallet, from), chain: ACTIVE_CHAIN,
+  });
+}
 
 // ---------- Rentals ----------
 export function listForRent(wallet: WalletClient, tokenId: bigint, mode: number, priceValue: bigint, from?: Address): Promise<Hex> {
   return wallet.writeContract({
     address: ADDRESSES.RentalMarket, abi: RentalMarketAbi, functionName: "listForRent",
     args: [tokenId, mode, priceValue], account: sender(wallet, from), chain: ACTIVE_CHAIN,
+  });
+}
+/** Remove a standing rental listing. Real ABI: RentalMarket.delist(uint256 tokenId). */
+export function delistRental(wallet: WalletClient, tokenId: bigint, from?: Address): Promise<Hex> {
+  return wallet.writeContract({
+    address: ADDRESSES.RentalMarket, abi: RentalMarketAbi, functionName: "delist",
+    args: [tokenId], account: sender(wallet, from), chain: ACTIVE_CHAIN,
+  });
+}
+/** Refund renter when a matchday is postponed. Real ABI: RentalMarket.refundPostponed(uint256 tokenId, uint256 matchday). */
+export function refundPostponed(wallet: WalletClient, tokenId: bigint, matchday: number, from?: Address): Promise<Hex> {
+  return wallet.writeContract({
+    address: ADDRESSES.RentalMarket, abi: RentalMarketAbi, functionName: "refundPostponed",
+    args: [tokenId, BigInt(matchday)], account: sender(wallet, from), chain: ACTIVE_CHAIN,
+  });
+}
+/** Set the floor price for a (player, tier) pair. Real ABI: RentalMarket.setFloorPrice(bytes32 player, uint8 tier, uint256 price). */
+export function setFloorPrice(wallet: WalletClient, player: Hex, tier: number, price: bigint, from?: Address): Promise<Hex> {
+  return wallet.writeContract({
+    address: ADDRESSES.RentalMarket, abi: RentalMarketAbi, functionName: "setFloorPrice",
+    args: [player, tier, price], account: sender(wallet, from), chain: ACTIVE_CHAIN,
   });
 }
 export function rentCard(wallet: WalletClient, tokenId: bigint, matchday: number, from?: Address): Promise<Hex> {

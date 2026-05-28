@@ -25,14 +25,20 @@ vi.mock("@/lib/supabase/server", () => ({
 let portfolioGET: (req: NextRequest) => Promise<Response>;
 let contestsGET: (req: NextRequest) => Promise<Response>;
 let lineupGET: (req: NextRequest) => Promise<Response>;
+let marketGET: (req: NextRequest) => Promise<Response>;
+let rentalsGET: (req: NextRequest) => Promise<Response>;
 
 beforeAll(async () => {
   const portfolio = await import("../portfolio/route");
   const contests = await import("../contests/route");
   const lineup = await import("../lineup/route");
+  const market = await import("../market/route");
+  const rentals = await import("../rentals/route");
   portfolioGET = portfolio.GET;
   contestsGET = contests.GET;
   lineupGET = lineup.GET;
+  marketGET = market.GET;
+  rentalsGET = rentals.GET;
 });
 
 // ---------------------------------------------------------------------------
@@ -124,6 +130,80 @@ describe("GET /api/lineup — param validation", () => {
   it("returns 400 when matchday is not numeric", async () => {
     const req = new NextRequest("http://localhost/api/lineup?matchday=foo&wallet=0xabc");
     const res = await lineupGET(req);
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body).toHaveProperty("error");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Market
+// ---------------------------------------------------------------------------
+describe("GET /api/market — param validation", () => {
+  it("returns 400 when tier is non-numeric", async () => {
+    const req = new NextRequest("http://localhost/api/market?tier=gold");
+    const res = await marketGET(req);
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body).toHaveProperty("error");
+  });
+
+  it("returns 400 when tier is a blank string", async () => {
+    const req = new NextRequest("http://localhost/api/market?tier=");
+    const res = await marketGET(req);
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body).toHaveProperty("error");
+  });
+
+  it("returns 400 when maxPrice is non-numeric", async () => {
+    const req = new NextRequest("http://localhost/api/market?maxPrice=abc");
+    const res = await marketGET(req);
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body).toHaveProperty("error");
+  });
+
+  it("returns 400 when maxPrice is a blank string", async () => {
+    const req = new NextRequest("http://localhost/api/market?maxPrice=");
+    const res = await marketGET(req);
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body).toHaveProperty("error");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Rentals
+// ---------------------------------------------------------------------------
+describe("GET /api/rentals — param validation", () => {
+  it("returns 400 when tier is non-numeric", async () => {
+    const req = new NextRequest("http://localhost/api/rentals?tier=rare");
+    const res = await rentalsGET(req);
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body).toHaveProperty("error");
+  });
+
+  it("returns 400 when tier is a blank string", async () => {
+    const req = new NextRequest("http://localhost/api/rentals?tier=");
+    const res = await rentalsGET(req);
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body).toHaveProperty("error");
+  });
+
+  it("returns 400 when maxPrice is non-numeric", async () => {
+    const req = new NextRequest("http://localhost/api/rentals?maxPrice=cheap");
+    const res = await rentalsGET(req);
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body).toHaveProperty("error");
+  });
+
+  it("returns 400 when maxPrice is a float string", async () => {
+    const req = new NextRequest("http://localhost/api/rentals?maxPrice=1.5");
+    const res = await rentalsGET(req);
     expect(res.status).toBe(400);
     const body = await res.json();
     expect(body).toHaveProperty("error");
