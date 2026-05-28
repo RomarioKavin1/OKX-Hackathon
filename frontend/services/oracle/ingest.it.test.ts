@@ -139,6 +139,55 @@ describe.skipIf(!API_KEY)(
     });
 
     // ---------------------------------------------------------------------------
+    // 2b. Regression-guard: known totals from the 2022 World Cup Final
+    // ---------------------------------------------------------------------------
+
+    describe("regression guard — known historical totals (FRA 3-3 ARG WC2022 Final)", () => {
+      let rawFixture: Awaited<ReturnType<typeof fetchFixturePlayers>>;
+
+      beforeAll(async () => {
+        rawFixture = await fetchFixturePlayers(FIXTURE_ID);
+      }, 30_000);
+
+      it("aggregated normalized events match documented match facts", () => {
+        let totalGoals = 0;
+        let totalAssists = 0;
+        let totalYellow = 0;
+        let totalRed = 0;
+        let playersWithMinutes = 0;
+
+        for (const teamEntry of rawFixture.teams) {
+          const conceded = rawFixture.teamConceded[teamEntry.team.id] ?? 0;
+          for (const ps of teamEntry.players) {
+            const ev = normalizePlayer(ps, conceded);
+            totalGoals += ev.goals;
+            totalAssists += ev.assists;
+            totalYellow += ev.yellowCards;
+            totalRed += ev.redCards;
+            if (ev.minutes >= 1) playersWithMinutes++;
+          }
+        }
+
+        // Documented totals: FRA 3 - 3 ARG in regulation + ET (penalties not in player stats)
+        // 6 goals across the match. Allow >= 6 to tolerate small variance.
+        expect(totalGoals).toBeGreaterThanOrEqual(6);
+
+        // A high-event final — at least 4 assists recorded across both teams
+        expect(totalAssists).toBeGreaterThanOrEqual(4);
+
+        // Heated match — many yellow cards. Lower bound 6.
+        expect(totalYellow).toBeGreaterThanOrEqual(6);
+
+        // No straight reds in regulation/ET — allow up to 1 to tolerate
+        // ambiguous Otamendi second-yellow handling.
+        expect(totalRed).toBeLessThanOrEqual(1);
+
+        // 22 starters + subs across both teams — minimum 22 players with ≥1 minute.
+        expect(playersWithMinutes).toBeGreaterThanOrEqual(22);
+      });
+    });
+
+    // ---------------------------------------------------------------------------
     // 3. ingestFixture — upsert + read-back from Supabase
     // ---------------------------------------------------------------------------
 
