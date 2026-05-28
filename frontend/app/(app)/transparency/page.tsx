@@ -12,11 +12,23 @@ import { xLayerTestnet } from "@/lib/contracts/chain";
 import { DEMO_FIXTURE_ID } from "@/lib/data/fixtures";
 import { DisputeForm } from "./DisputeForm";
 
+// ── Env config ───────────────────────────────────────────────────────────────
+
+const KNOWN_SIGNERS = (process.env.NEXT_PUBLIC_SCORE_ORACLE_SIGNERS ?? "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter((s) => /^0x[0-9a-fA-F]{40}$/.test(s)) as `0x${string}`[];
+
 // ── Types ────────────────────────────────────────────────────────────────────
 
 interface OracleInfo {
   threshold: number;
   owner: string;
+}
+
+interface SignerEntry {
+  address: `0x${string}`;
+  active: boolean;
 }
 
 // ── Oracle server-fetch ───────────────────────────────────────────────────────
@@ -41,6 +53,21 @@ async function fetchOracleInfo(): Promise<OracleInfo | null> {
   } catch {
     return null;
   }
+}
+
+async function fetchSigners(): Promise<SignerEntry[]> {
+  if (KNOWN_SIGNERS.length === 0) return [];
+  return await Promise.all(
+    KNOWN_SIGNERS.map(async (addr) => {
+      const active = (await publicClient.readContract({
+        address: ADDRESSES.ScoreOracle,
+        abi: ScoreOracleAbi,
+        functionName: "isSigner",
+        args: [addr],
+      })) as boolean;
+      return { address: addr, active };
+    }),
+  );
 }
 
 // ── Sub-components (module-scope, server) ───────────────────────────────────
@@ -93,7 +120,7 @@ function Section({ title, children }: SectionProps) {
 // ── Page ────────────────────────────────────────────────────────────────────
 
 export default async function TransparencyPage() {
-  const oracle = await fetchOracleInfo();
+  const [oracle, signers] = await Promise.all([fetchOracleInfo(), fetchSigners()]);
 
   const contractEntries = Object.entries(ADDRESSES) as [string, string][];
 
@@ -143,6 +170,38 @@ export default async function TransparencyPage() {
           <div className="rounded-lg border border-yellow-600/50 bg-yellow-600/10 p-3 text-sm text-yellow-700 dark:text-yellow-300">
             Oracle read unavailable (RPC unreachable). Contract address:{" "}
             <AddressLink address={ADDRESSES.ScoreOracle} />
+          </div>
+        )}
+
+        {signers.length > 0 ? (
+          <div className="rounded-lg border p-4 flex flex-col gap-2 mt-3">
+            <span className="text-sm font-semibold">Signers ({signers.filter((s) => s.active).length} active / {signers.length} known)</span>
+            <ul className="flex flex-col gap-1">
+              {signers.map((s) => (
+                <li key={s.address} className="flex items-center justify-between text-xs">
+                  <AddressLink address={s.address} />
+                  <span
+                    className={`inline-flex rounded-full px-2 py-0.5 font-semibold ${
+                      s.active
+                        ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200"
+                        : "bg-zinc-200 text-zinc-700 dark:bg-zinc-700 dark:text-zinc-300"
+                    }`}
+                  >
+                    {s.active ? "active" : "inactive"}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <p className="text-xs opacity-60 mt-1">
+              Active status is read from <code className="font-mono">ScoreOracle.isSigner(address)</code> live.
+              Set <code className="font-mono">NEXT_PUBLIC_SCORE_ORACLE_SIGNERS</code> in env to populate this list.
+            </p>
+          </div>
+        ) : (
+          <div className="rounded-lg border border-dashed p-3 text-xs opacity-70 mt-3">
+            Signer roster not configured. Set{" "}
+            <code className="font-mono">NEXT_PUBLIC_SCORE_ORACLE_SIGNERS</code> in env to display
+            the multi-sig composition here.
           </div>
         )}
       </Section>
