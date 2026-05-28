@@ -226,6 +226,21 @@ export default async function TransparencyPage() {
         <pre className="rounded bg-muted/30 border p-3 text-xs overflow-x-auto">
           {`GET /rest/v1/match_events?matchday=eq.1&select=*`}
         </pre>
+        <div className="rounded-lg border p-4 flex flex-col gap-2">
+          <span className="text-sm font-semibold">Ingest details</span>
+          <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-2 text-xs">
+            <dt className="opacity-70">Primary source</dt>
+            <dd><a className="underline" href="https://api-football.com" target="_blank" rel="noreferrer">API-Football v3 (RapidAPI)</a></dd>
+            <dt className="opacity-70">Fallback source</dt>
+            <dd>SportRadar trial / FotMob (manual)</dd>
+            <dt className="opacity-70">Ingest cadence</dt>
+            <dd>Every 60 seconds during live matches; final snapshot 30 minutes after last whistle</dd>
+            <dt className="opacity-70">Re-verify the root</dt>
+            <dd>
+              <code className="font-mono">cd frontend && npm run verify -- &lt;matchday&gt;</code> against this repo reproduces the score Merkle root from public match data
+            </dd>
+          </dl>
+        </div>
       </Section>
 
       {/* FR-T2: Scoring formula */}
@@ -333,6 +348,14 @@ export default async function TransparencyPage() {
             real funds. All contracts will be re-audited before any mainnet launch.
           </p>
         </div>
+        <p className="text-sm opacity-80 mt-3">
+          Researchers can report findings via the{" "}
+          <a className="underline" href="https://github.com/RomarioKavin1/OKX-Hackathon/blob/main/docs/compliance/bug-bounty.md" target="_blank" rel="noreferrer">bug bounty program</a>.
+          Known issues, design ambiguities, and trust assumptions are documented in{" "}
+          <a className="underline" href="https://github.com/RomarioKavin1/OKX-Hackathon/blob/main/docs/contracts/flow-issues.md" target="_blank" rel="noreferrer">contracts/flow-issues.md</a>{" "}
+          and{" "}
+          <a className="underline" href="https://github.com/RomarioKavin1/OKX-Hackathon/blob/main/docs/contracts/contract-surface.md" target="_blank" rel="noreferrer">contracts/contract-surface.md</a>.
+        </p>
       </Section>
 
       {/* FR-CT8: Rollover policy + escrow lock */}
