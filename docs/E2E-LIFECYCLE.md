@@ -170,3 +170,29 @@ After kickoff lock, the multi-sig oracle posts roots and money flows.
 - Contest pool 10 USDC, 8% rake → treasury +0.8, winner claims 9.2 (net).
 - DNP insurance on a 1 USDC rental → payout 1.1 (rental + half of the 0.2 premium).
 - Pre-lock cancel of a 10 USDC rental → renter +9.0, owner +1.0. Postponement → renter +full.
+
+---
+
+## Live smoke run — `scripts/smoke-e2e.ts`
+
+A one-shot script that exercises the close-of-matchday pipeline against the live X Layer testnet:
+
+```bash
+cd frontend
+SMOKE_FIXTURE_ID=<api-football fixture id> \
+  SMOKE_MATCHDAY=<your testnet matchday id> \
+  npx tsx scripts/smoke-e2e.ts
+```
+
+Prerequisites in repo-root `.env`:
+- `API_FOOTBALL_KEY` — data feed
+- `SUPABASE_SERVICE_ROLE_KEY` — upsert match_events
+- `PRIVATE_KEY` or `SIGNER_KEYS` — oracle signer for root submission
+
+The chosen `SMOKE_MATCHDAY` must already have at least one committed lineup. `publishMatchday()` exits early with a warning otherwise — no on-chain tx is sent.
+
+What it does, in order:
+1. `ingestFixture(fixtureId, matchday)` — pulls player stats from API-Football, normalizes via `normalizePlayer`, upserts to Supabase `match_events`.
+2. `publishMatchday(matchday)` — reads lineups + match events, computes scores, builds score + DNP + per-contest payout Merkle roots, and submits them via the configured signer keys (loop in `submitRootWithSigners`).
+
+For per-task unit verification of these steps see `services/oracle/ingest.it.test.ts`, `services/oracle/publish.test.ts`, and `verifier/verify.test.ts`.
