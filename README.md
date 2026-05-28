@@ -75,3 +75,19 @@ The rental + contest loop means the same cards generate repeat locked volume eve
 - **Off-chain:** score engine, Merkle builder, and fee math that mirror the on-chain splits exactly.
 
 Deployed addresses: [`contracts/deployments/xlayer-testnet.json`](contracts/deployments/xlayer-testnet.json) · contract reference: [`CONTRACTS.md`](CONTRACTS.md) · end-to-end flow: [`docs/E2E-LIFECYCLE.md`](docs/E2E-LIFECYCLE.md) · product spec: [`PRD.md`](PRD.md)
+
+---
+
+## What's in v1 — testnet ready
+
+All 10 product contracts + MockUSDC deployed and wired on X Layer testnet (chain 1952). 398 frontend tests + 55 contract tests pass.
+
+**Core game** — pack sales, fixed-price marketplace, per-matchday ERC-4907 rentals (88/10/2 split), lineup commit with stamina + chips + captain, ScoreOracle multi-sig (N-of-M with M routed payout + season roots), Merkle-proof contest payouts, DNP insurance with solvency guard, season-aggregate payout, MIT-licensed verifier CLI that reproduces every root from public match data.
+
+**Read & UI** — Supabase-backed indexer + read API, live ticker (websocket replay), full lineup builder, day-after report, claim history (live on-chain `claimed()` enrichment), career stats, public profile pages, transparency page with live oracle signer roster + data feed details + contracts table.
+
+**Compliance & trust** — risk-jurisdictions matrix, geofencing middleware (paid contests gated by jurisdiction posture), draft Terms / Privacy / Fair-Play / Signer Agreement / Incident Playbook / Bug Bounty.
+
+**Ops scripts** — `AddSigners.s.sol`, `RotateOracle.s.sol` for multi-sig bootstrap and rotation; `smoke-e2e.ts` for live ingest → publish pipeline test against a real fixture; `audit-players.ts` for content coverage gaps.
+
+Open before mainnet: full 1300-player content set (PRD §11 #2), pre-mainnet security audit (PRD §11 #9), real external oracle signers onboarded (PRD §11 #4), legal sign-off on the compliance drafts.
