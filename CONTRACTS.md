@@ -214,6 +214,3 @@ ContestEscrow(oracle) / InsurancePool(oracle) / SeasonLeaderboard(oracle) read S
 
 ## Off-chain (NOT in contracts, by design)
 Scoring multipliers (§4.9), trait/formation/country synergies, position legality, live scoring, day-after analytics, wash-trade detection, geofencing, contest minTier eligibility. Live in the score engine + indexer + frontend.
-
-## Hardening TODO (pre-mainnet)
-ReentrancyGuard on escrow/payout paths; SafeERC20 instead of bool-checked transfers; commit-reveal `blockhash` is weakly manipulable even at 16-block delay (VRF is the v1.5 upgrade); pause switches; events on all admin setters. Payout/season roots already routed through the ScoreOracle multi-sig.

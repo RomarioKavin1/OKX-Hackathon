@@ -170,8 +170,3 @@ After kickoff lock, the multi-sig oracle posts roots and money flows.
 - Contest pool 10 USDC, 8% rake → treasury +0.8, winner claims 9.2 (net).
 - DNP insurance on a 1 USDC rental → payout 1.1 (rental + half of the 0.2 premium).
 - Pre-lock cancel of a 10 USDC rental → renter +9.0, owner +1.0. Postponement → renter +full.
-
-## Known hardening TODOs (pre-mainnet, not lifecycle blockers)
-ReentrancyGuard on escrow/payout paths; SafeERC20 instead of bool-checked transfers; rotate
-the testnet 1-of-1 oracle to 3-of-5; pause switches. The commit-reveal blockhash is weakly
-manipulable even at 16 blocks — VRF is the v1.5 upgrade.
