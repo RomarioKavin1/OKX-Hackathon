@@ -196,6 +196,45 @@ export function configureMatchday(wallet: WalletClient, matchday: number, lock: 
     args: [BigInt(matchday), lock], account: sender(wallet, from), chain: ACTIVE_CHAIN,
   });
 }
+/**
+ * Lock a matchday: prevents further lineup commits.
+ * Real ABI: GameRegistry.lock(uint256 m).
+ * Owner/controller-key gated — only the contract owner may call this.
+ */
+export function lockMatchday(wallet: WalletClient, matchday: number, from?: Address): Promise<Hex> {
+  return wallet.writeContract({
+    address: ADDRESSES.GameRegistry, abi: GameRegistryAbi, functionName: "lock",
+    args: [BigInt(matchday)], account: sender(wallet, from), chain: ACTIVE_CHAIN,
+  });
+}
+/**
+ * Cancel a matchday (e.g. fixture postponed): marks it cancelled so renters can call
+ * RentalMarket.refundPostponed().
+ * Real ABI: GameRegistry.cancel(uint256 m).
+ * Owner/controller-key gated — only the contract owner may call this.
+ */
+export function cancelMatchday(wallet: WalletClient, matchday: number, from?: Address): Promise<Hex> {
+  return wallet.writeContract({
+    address: ADDRESSES.GameRegistry, abi: GameRegistryAbi, functionName: "cancel",
+    args: [BigInt(matchday)], account: sender(wallet, from), chain: ACTIVE_CHAIN,
+  });
+}
+/**
+ * Settle a matchday on GameRegistry: transitions status to Settled after the oracle
+ * has posted its score root.
+ * Real ABI: GameRegistry.settle(uint256 m).
+ * Owner/controller-key gated — only the contract owner may call this.
+ *
+ * NOTE: RentalMarket does NOT expose a matchday-level bulk settle.  Individual rentals
+ * must be settled via the existing `settleRental(wallet, tokenId, matchday)` wrapper,
+ * one call per (tokenId, matchday) pair.
+ */
+export function settleMatchday(wallet: WalletClient, matchday: number, from?: Address): Promise<Hex> {
+  return wallet.writeContract({
+    address: ADDRESSES.GameRegistry, abi: GameRegistryAbi, functionName: "settle",
+    args: [BigInt(matchday)], account: sender(wallet, from), chain: ACTIVE_CHAIN,
+  });
+}
 
 // ---------- Contests ----------
 export function createContest(

@@ -15,6 +15,9 @@
     "publish": "tsx services/oracle/publish.ts",
     "verify": "tsx verifier/index.ts",
     "rollover": "tsx services/oracle/rollover.ts",
+    "season": "tsx services/oracle/season.ts",
+    "replay": "tsx services/livescore/replay.ts",
+    "lifecycle": "tsx services/lifecycle/cron.ts",
     "seed": "DRY=0 tsx scripts/seed-players.ts",
     "seed:dry": "DRY=1 tsx scripts/seed-players.ts"
   },

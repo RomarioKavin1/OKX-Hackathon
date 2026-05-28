@@ -16,7 +16,9 @@
  *
  * Renter actions:
  *   - RentPanel  (approve USDC + rent)
+ *   - InsureToggle (DNP insurance — Task 7.3)
  *   - CancelPanel (pre-lock cancel, shows 90% refund)
+ *   - ClaimDnpPanel (post-DNP-root claim — Task 7.3)
  *   - PostponeRefundPanel (FR-R7)
  */
 
@@ -37,6 +39,7 @@ import {
   CancelPanel,
   PostponeRefundPanel,
 } from "@/components/RentalActions";
+import { InsureToggle, ClaimDnpPanel } from "@/components/InsureToggle";
 import type { RentalsResponse, RentalListing } from "@/app/api/rentals/route";
 
 // ── Mode label ────────────────────────────────────────────────────────────────
@@ -209,6 +212,10 @@ function CardTile({ listing, walletAddress, checkMatchday, onSuccess }: CardTile
   const [stamina, setStamina] = useState<number | null>(null);
   const [usedThisMatchday, setUsedThisMatchday] = useState<boolean | null>(null);
   const [expanded, setExpanded] = useState(false);
+  // Insurance: track the matchday chosen in the rent panel so the insure/claim
+  // toggle stays in sync.  We track it here so InsureToggle + ClaimDnpPanel share
+  // the same matchday value.
+  const [rentMatchday, setRentMatchday] = useState<number>(checkMatchday);
 
   useEffect(() => {
     let cancelled = false;
@@ -322,6 +329,41 @@ function CardTile({ listing, walletAddress, checkMatchday, onSuccess }: CardTile
                 resolvedPrice={resolvedPrice}
                 onSuccess={handleSuccess}
               />
+
+              {/* DNP Insurance — shown alongside the rent flow (Task 7.3) */}
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center gap-2">
+                  <label className="text-xs font-medium text-zinc-500">
+                    Insurance matchday:
+                  </label>
+                  <select
+                    className="rounded border border-zinc-300 bg-white px-2 py-0.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    value={rentMatchday}
+                    onChange={(e) => setRentMatchday(Number(e.target.value))}
+                  >
+                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((d) => (
+                      <option key={d} value={d}>
+                        Matchday {d}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <InsureToggle
+                  matchday={rentMatchday}
+                  tokenId={tokenIdBig}
+                  rentalCost={resolvedPrice}
+                  onSuccess={handleSuccess}
+                />
+              </div>
+
+              {/* DNP Refund Claim — shown after the oracle posts a DNP root */}
+              <ClaimDnpPanel
+                matchday={rentMatchday}
+                tokenId={tokenIdBig}
+                rentalCost={resolvedPrice}
+                onSuccess={handleSuccess}
+              />
+
               <CancelPanel
                 tokenId={tokenIdBig}
                 paid={resolvedPrice}
