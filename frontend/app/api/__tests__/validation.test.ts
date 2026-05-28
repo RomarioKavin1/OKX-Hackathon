@@ -27,6 +27,7 @@ let contestsGET: (req: NextRequest) => Promise<Response>;
 let lineupGET: (req: NextRequest) => Promise<Response>;
 let marketGET: (req: NextRequest) => Promise<Response>;
 let rentalsGET: (req: NextRequest) => Promise<Response>;
+let profileGET: (req: NextRequest) => Promise<Response>;
 
 beforeAll(async () => {
   const portfolio = await import("../portfolio/route");
@@ -34,11 +35,13 @@ beforeAll(async () => {
   const lineup = await import("../lineup/route");
   const market = await import("../market/route");
   const rentals = await import("../rentals/route");
+  const profile = await import("../profile/route");
   portfolioGET = portfolio.GET;
   contestsGET = contests.GET;
   lineupGET = lineup.GET;
   marketGET = market.GET;
   rentalsGET = rentals.GET;
+  profileGET = profile.GET;
 });
 
 // ---------------------------------------------------------------------------
@@ -204,6 +207,37 @@ describe("GET /api/rentals — param validation", () => {
   it("returns 400 when maxPrice is a float string", async () => {
     const req = new NextRequest("http://localhost/api/rentals?maxPrice=1.5");
     const res = await rentalsGET(req);
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body).toHaveProperty("error");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Profile
+// ---------------------------------------------------------------------------
+describe("GET /api/profile — param validation", () => {
+  it("returns 400 when address param is missing", async () => {
+    const req = new NextRequest("http://localhost/api/profile");
+    const res = await profileGET(req);
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body).toHaveProperty("error");
+  });
+
+  it("returns 400 when address param is blank", async () => {
+    const req = new NextRequest("http://localhost/api/profile?address=");
+    const res = await profileGET(req);
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body).toHaveProperty("error");
+  });
+
+  it("returns 400 when address param is only whitespace", async () => {
+    const req = new NextRequest(
+      "http://localhost/api/profile?address=%20%20"
+    );
+    const res = await profileGET(req);
     expect(res.status).toBe(400);
     const body = await res.json();
     expect(body).toHaveProperty("error");
