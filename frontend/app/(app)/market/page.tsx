@@ -7,6 +7,20 @@ import { NATION_NAME } from "@/lib/data/nations";
 import { fmtUsdc } from "@/lib/business/format";
 import { PLAYER_BY_ID } from "@/lib/data/players";
 import type { MarketListing } from "@/app/api/market/route";
+import { PlayerCard } from "@/components/PlayerCard";
+import {
+  Button,
+  buttonClasses,
+  Pill,
+  SectionHeading,
+  EmptyState,
+  Skeleton,
+  TierBadge,
+  cx,
+} from "@/components/ui";
+import type { TierId } from "@/components/ui";
+import type { Nation } from "@/lib/data/nations";
+import type { Position } from "@/lib/types";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -18,6 +32,24 @@ interface Filters {
   maxPrice: string;
 }
 
+// ── Tier quick-filter chips ───────────────────────────────────────────────────
+
+const TIER_CHIPS: { value: string; label: string; tone: "neutral" | "cobalt" | "violet" | "gold" }[] = [
+  { value: "", label: "All", tone: "neutral" },
+  { value: "0", label: "Common", tone: "neutral" },
+  { value: "1", label: "Rare", tone: "cobalt" },
+  { value: "2", label: "Super Rare", tone: "violet" },
+  { value: "3", label: "Unique", tone: "gold" },
+];
+
+const POSITION_CHIPS: { value: string; label: string }[] = [
+  { value: "", label: "All positions" },
+  { value: "GK", label: "GK" },
+  { value: "DEF", label: "DEF" },
+  { value: "MID", label: "MID" },
+  { value: "FWD", label: "FWD" },
+];
+
 // ── Module-scope sub-components ───────────────────────────────────────────────
 
 interface ListingCardProps {
@@ -27,29 +59,32 @@ interface ListingCardProps {
 function ListingCard({ listing }: ListingCardProps) {
   const player = PLAYER_BY_ID.get(listing.playerId as `0x${string}`);
   const name = player?.name ?? `Player ${listing.playerId.slice(0, 10)}…`;
-  const tierLabel = TIER_NAME[listing.tier as keyof typeof TIER_NAME] ?? `Tier ${listing.tier}`;
+  const tierId = Math.min(3, Math.max(0, listing.tier)) as TierId;
   const priceBigInt = BigInt(listing.price);
   const priceDisplay = fmtUsdc(priceBigInt);
-  const nationLabel = listing.nation ? (NATION_NAME[listing.nation] ?? listing.nation) : "—";
-  const positionLabel = listing.position ?? "—";
+
+  // Map nation/position from listing to PlayerCard props
+  const nation = (listing.nation ?? (player?.nation as Nation | undefined)) ?? "FRA";
+  const position = (listing.position ?? (player?.position as Position | undefined)) ?? "MID";
 
   return (
-    <Link
-      href={`/market/${listing.tokenId}`}
-      className="flex flex-col gap-1 rounded-lg border border-zinc-200 bg-white p-4 shadow-sm transition hover:border-zinc-400 hover:shadow"
-    >
-      <div className="flex items-start justify-between">
-        <span className="font-semibold text-zinc-900">{name}</span>
-        <span className="rounded bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-600">
-          {tierLabel}
-        </span>
-      </div>
-      <div className="mt-1 flex gap-3 text-xs text-zinc-500">
-        <span>{nationLabel}</span>
-        <span>{positionLabel}</span>
-        <span>#{listing.tokenId}</span>
-      </div>
-      <div className="mt-2 text-sm font-bold text-emerald-700">{priceDisplay} USDC</div>
+    <Link href={`/market/${listing.tokenId}`} className="block focus:outline-none">
+      <PlayerCard
+        name={name}
+        nation={nation as Nation}
+        position={position as Position}
+        tier={tierId}
+        stats={player?.base}
+        footer={
+          <div className="flex items-center justify-between gap-2">
+            <span className="display tabular-nums text-base leading-none text-ink">
+              {priceDisplay}
+              <span className="ml-1 text-xs font-sans font-semibold text-muted">USDC</span>
+            </span>
+            <span className={buttonClasses("primary", "sm")}>Buy</span>
+          </div>
+        }
+      />
     </Link>
   );
 }
@@ -65,30 +100,35 @@ function FilterBar({ filters, onChange, onSearch, loading }: FilterBarProps) {
   const set = (key: keyof Filters) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     onChange({ ...filters, [key]: e.target.value });
 
+  const inputBase =
+    "rounded-sm border border-line-2 bg-paper-2 px-3 py-1.5 text-sm text-ink " +
+    "placeholder:text-muted focus:border-cobalt focus:outline-none focus:ring-2 focus:ring-cobalt/25 " +
+    "transition-[border-color,box-shadow] duration-150";
+
   return (
     <form
       onSubmit={(e) => { e.preventDefault(); onSearch(); }}
       className="flex flex-wrap items-end gap-3"
     >
-      <label className="flex flex-col gap-1 text-xs font-medium text-zinc-600">
-        Player ID (hex)
+      <label className="flex flex-col gap-1">
+        <span className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">Player ID</span>
         <input
           type="text"
           placeholder="0x…"
           value={filters.player}
           onChange={set("player")}
-          className="w-36 rounded border border-zinc-300 bg-white px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-400"
+          className={cx(inputBase, "w-36 font-mono")}
         />
       </label>
 
-      <label className="flex flex-col gap-1 text-xs font-medium text-zinc-600">
-        Nation
+      <label className="flex flex-col gap-1">
+        <span className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">Nation</span>
         <select
           value={filters.nation}
           onChange={set("nation")}
-          className="rounded border border-zinc-300 bg-white px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-400"
+          className={inputBase}
         >
-          <option value="">All</option>
+          <option value="">All nations</option>
           {(Object.keys(NATION_NAME) as (keyof typeof NATION_NAME)[]).map((code) => (
             <option key={code} value={code}>
               {NATION_NAME[code]}
@@ -97,38 +137,8 @@ function FilterBar({ filters, onChange, onSearch, loading }: FilterBarProps) {
         </select>
       </label>
 
-      <label className="flex flex-col gap-1 text-xs font-medium text-zinc-600">
-        Tier
-        <select
-          value={filters.tier}
-          onChange={set("tier")}
-          className="rounded border border-zinc-300 bg-white px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-400"
-        >
-          <option value="">All</option>
-          <option value="0">Common</option>
-          <option value="1">Rare</option>
-          <option value="2">Super Rare</option>
-          <option value="3">Unique</option>
-        </select>
-      </label>
-
-      <label className="flex flex-col gap-1 text-xs font-medium text-zinc-600">
-        Position
-        <select
-          value={filters.position}
-          onChange={set("position")}
-          className="rounded border border-zinc-300 bg-white px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-400"
-        >
-          <option value="">All</option>
-          <option value="GK">GK</option>
-          <option value="DEF">DEF</option>
-          <option value="MID">MID</option>
-          <option value="FWD">FWD</option>
-        </select>
-      </label>
-
-      <label className="flex flex-col gap-1 text-xs font-medium text-zinc-600">
-        Max price (USDC)
+      <label className="flex flex-col gap-1">
+        <span className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">Max price (USDC)</span>
         <input
           type="number"
           min="0"
@@ -136,17 +146,13 @@ function FilterBar({ filters, onChange, onSearch, loading }: FilterBarProps) {
           placeholder="any"
           value={filters.maxPrice}
           onChange={set("maxPrice")}
-          className="w-28 rounded border border-zinc-300 bg-white px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-400"
+          className={cx(inputBase, "w-28")}
         />
       </label>
 
-      <button
-        type="submit"
-        disabled={loading}
-        className="rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-40"
-      >
-        {loading ? "Searching…" : "Search"}
-      </button>
+      <Button type="submit" variant="primary" size="md" loading={loading}>
+        {loading ? "Searching" : "Search"}
+      </Button>
     </form>
   );
 }
@@ -209,13 +215,81 @@ export default function MarketPage() {
     }
   }
 
-  return (
-    <main className="flex max-w-5xl flex-col gap-6">
-      <header>
-        <h1 className="text-2xl font-bold">Marketplace</h1>
-        <p className="text-sm opacity-70">Browse and buy listed player cards.</p>
-      </header>
+  function setTierFilter(val: string) {
+    const next = { ...filters, tier: val };
+    setFilters(next);
+    void fetchListings(next);
+  }
 
+  function setPositionFilter(val: string) {
+    const next = { ...filters, position: val };
+    setFilters(next);
+    void fetchListings(next);
+  }
+
+  return (
+    <main className="flex flex-col gap-8">
+      {/* ── Header ── */}
+      <SectionHeading
+        kicker="2026 World Cup"
+        title="Marketplace"
+        action={
+          <p className="text-sm text-muted">
+            {loading ? "Loading…" : `${listings.length} listing${listings.length === 1 ? "" : "s"}`}
+          </p>
+        }
+      />
+
+      {/* ── Tier quick-filter row ── */}
+      <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filter by tier">
+        {TIER_CHIPS.map((chip) => (
+          <button
+            key={chip.value}
+            type="button"
+            onClick={() => setTierFilter(chip.value)}
+            className="focus:outline-none focus-visible:ring-2 focus-visible:ring-cobalt focus-visible:ring-offset-2 rounded-full"
+            aria-pressed={filters.tier === chip.value}
+          >
+            <Pill
+              tone={filters.tier === chip.value ? chip.tone : "neutral"}
+              className={cx(
+                "cursor-pointer transition-opacity duration-150",
+                filters.tier === chip.value
+                  ? "opacity-100 ring-1 ring-current"
+                  : "opacity-70 hover:opacity-100",
+              )}
+            >
+              {chip.label}
+            </Pill>
+          </button>
+        ))}
+
+        <div className="ml-4 h-4 w-px bg-line-2" aria-hidden />
+
+        {POSITION_CHIPS.map((chip) => (
+          <button
+            key={chip.value}
+            type="button"
+            onClick={() => setPositionFilter(chip.value)}
+            className="focus:outline-none focus-visible:ring-2 focus-visible:ring-cobalt focus-visible:ring-offset-2 rounded-full"
+            aria-pressed={filters.position === chip.value}
+          >
+            <Pill
+              tone={filters.position === chip.value ? "cobalt" : "neutral"}
+              className={cx(
+                "cursor-pointer transition-opacity duration-150",
+                filters.position === chip.value
+                  ? "opacity-100 ring-1 ring-current"
+                  : "opacity-70 hover:opacity-100",
+              )}
+            >
+              {chip.label}
+            </Pill>
+          </button>
+        ))}
+      </div>
+
+      {/* ── Advanced filter bar ── */}
       <FilterBar
         filters={filters}
         onChange={setFilters}
@@ -223,21 +297,56 @@ export default function MarketPage() {
         loading={loading}
       />
 
+      {/* ── Error ── */}
       {error && (
-        <p className="rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div
+          role="alert"
+          className="flex items-start gap-3 rounded-card border border-danger/30 bg-danger/8 px-4 py-3 text-sm text-danger"
+        >
+          <span aria-hidden className="mt-0.5 shrink-0">!</span>
           {error}
-        </p>
+        </div>
       )}
 
-      {!loading && listings.length === 0 && !error && (
-        <p className="text-sm opacity-60">No listings found. Adjust filters or check back later.</p>
+      {/* ── Results ── */}
+      {loading ? (
+        <section
+          aria-label="Loading listings"
+          className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3"
+        >
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Skeleton key={i} className="h-52 rounded-card" />
+          ))}
+        </section>
+      ) : listings.length === 0 && !error ? (
+        <EmptyState
+          icon="🃏"
+          title="No listings found"
+          hint="Try adjusting your filters or check back when more cards are listed."
+          action={
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                const empty: Filters = { player: "", nation: "", tier: "", position: "", maxPrice: "" };
+                setFilters(empty);
+                void fetchListings(empty);
+              }}
+            >
+              Clear filters
+            </Button>
+          }
+        />
+      ) : (
+        <section
+          aria-label={`${listings.length} market listing${listings.length === 1 ? "" : "s"}`}
+          className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3"
+        >
+          {listings.map((l) => (
+            <ListingCard key={l.tokenId} listing={l} />
+          ))}
+        </section>
       )}
-
-      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {listings.map((l) => (
-          <ListingCard key={l.tokenId} listing={l} />
-        ))}
-      </section>
     </main>
   );
 }

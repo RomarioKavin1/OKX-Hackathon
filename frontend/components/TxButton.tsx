@@ -9,6 +9,7 @@ import { walletClientFromPrivy } from "@/lib/privyWallet";
 import { preflight } from "@/lib/business/preflight";
 import type { PreflightResult } from "@/lib/business/preflight";
 import { waitFor } from "@/lib/actions/writes";
+import { Button, Spinner, Pill, cx } from "@/components/ui";
 
 // ── Props ────────────────────────────────────────────────────────────────────
 
@@ -104,35 +105,36 @@ export function TxButton({ request, label, onSuccess, disabled = false }: TxButt
     }
   }
 
-  // ── Badge ──────────────────────────────────────────────────────────────────
+  // ── Status badge ───────────────────────────────────────────────────────────
   function renderBadge() {
     switch (phase.tag) {
       case "idle":
         return null;
       case "simulating":
-        return <SimBadge text="Simulating…" color="neutral" />;
+        return <TxStatusBadge tone="neutral" icon={<Spinner className="size-3" />} text="Simulating" />;
       case "simulated": {
         const r = phase.result;
         if (r.willRevert) {
-          return <SimBadge text={`✗ will revert: ${r.reason ?? "unknown reason"}`} color="red" />;
+          return <TxStatusBadge tone="danger" icon="✗" text={`Will revert: ${r.reason ?? "unknown reason"}`} />;
         }
         const gasStr = r.gas !== undefined ? `~${r.gas.toLocaleString()} gas` : "gas unknown";
         const gweiStr = r.gasPriceGwei !== undefined ? ` @ ${r.gasPriceGwei} gwei` : "";
-        return <SimBadge text={`✓ will succeed · ${gasStr}${gweiStr}`} color="green" />;
+        return <TxStatusBadge tone="ok" icon="✓" text={`Will succeed · ${gasStr}${gweiStr}`} />;
       }
       case "sending":
-        return <SimBadge text="Sending transaction…" color="neutral" />;
+        return <TxStatusBadge tone="cobalt" icon={<Spinner className="size-3" />} text="Sending transaction" />;
       case "mining":
-        return <SimBadge text="Waiting for confirmation…" color="neutral" />;
+        return <TxStatusBadge tone="cobalt" icon={<Spinner className="size-3" />} text="Waiting for confirmation" />;
       case "done":
         return (
-          <SimBadge
+          <TxStatusBadge
+            tone="ok"
+            icon="✓"
             text={`Mined: ${phase.hash.slice(0, 10)}…`}
-            color="green"
           />
         );
       case "error":
-        return <SimBadge text={`Error: ${phase.message}`} color="red" />;
+        return <TxStatusBadge tone="danger" icon="✗" text={`Error: ${phase.message}`} />;
     }
   }
 
@@ -140,7 +142,7 @@ export function TxButton({ request, label, onSuccess, disabled = false }: TxButt
   if (!wallet) {
     return (
       <div className="flex flex-col gap-1">
-        <p className="text-xs text-amber-700">Connect a wallet to send transactions.</p>
+        <Pill tone="warn">Connect a wallet to send transactions.</Pill>
       </div>
     );
   }
@@ -153,39 +155,49 @@ export function TxButton({ request, label, onSuccess, disabled = false }: TxButt
   const showConfirm =
     phase.tag === "simulated" && !phase.result.willRevert;
 
+  const isDone = phase.tag === "done";
+  const isError = phase.tag === "error";
+
   return (
     <div className="flex flex-col gap-2">
-      {/* Primary simulate button */}
-      <button
+      {/* Primary simulate button — primary=cobalt, shows spinner when simulating */}
+      <Button
         type="button"
+        variant="primary"
         disabled={disabled || isBusy}
+        loading={phase.tag === "simulating"}
         onClick={handleSimulate}
-        className="rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 disabled:opacity-40"
       >
-        {isBusy && phase.tag === "simulating" ? "Simulating…" : label}
-      </button>
+        {phase.tag === "simulating" ? "Simulating" : label}
+      </Button>
 
       {/* Simulation result badge */}
       {renderBadge()}
 
-      {/* Confirm button — only when simulation succeeded */}
+      {/* Confirm button — only when simulation succeeded; success=ok green */}
       {showConfirm && (
-        <button
+        <Button
           type="button"
+          variant="cta"
           disabled={isBusy}
+          loading={isBusy}
           onClick={handleConfirm}
-          className="rounded bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600 disabled:opacity-40"
         >
           Confirm &amp; Send
-        </button>
+        </Button>
       )}
 
       {/* Reset link after terminal states */}
-      {(phase.tag === "done" || phase.tag === "error") && (
+      {(isDone || isError) && (
         <button
           type="button"
           onClick={() => setPhase({ tag: "idle" })}
-          className="w-fit text-xs underline opacity-60 hover:opacity-80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+          className={cx(
+            "w-fit text-xs text-muted underline underline-offset-2 opacity-60",
+            "hover:opacity-100 hover:text-ink",
+            "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cobalt",
+            "transition-opacity duration-150",
+          )}
         >
           reset
         </button>
@@ -194,18 +206,39 @@ export function TxButton({ request, label, onSuccess, disabled = false }: TxButt
   );
 }
 
-// ── Tiny internal badge ────────────────────────────────────────────────────
+// ── Tiny internal status badge ──────────────────────────────────────────────
 
-function SimBadge({ text, color }: { text: string; color: "green" | "red" | "neutral" }) {
-  const cls =
-    color === "green"
-      ? "bg-emerald-50 text-emerald-800"
-      : color === "red"
-        ? "bg-red-50 text-red-700"
-        : "bg-zinc-100 text-zinc-600";
+import type { ReactNode } from "react";
+
+function TxStatusBadge({
+  tone,
+  icon,
+  text,
+}: {
+  tone: "ok" | "danger" | "cobalt" | "neutral";
+  icon: ReactNode;
+  text: string;
+}) {
+  const surface =
+    tone === "ok"
+      ? "bg-ok/10 border-ok/30 text-ok"
+      : tone === "danger"
+        ? "bg-danger/10 border-danger/30 text-danger"
+        : tone === "cobalt"
+          ? "bg-cobalt/10 border-cobalt/30 text-cobalt-ink"
+          : "bg-paper-3 border-line-2 text-ink-2";
+
   return (
-    <p className={`rounded px-3 py-1 text-xs font-mono ${cls}`} role="status" aria-live="polite">
-      {text}
+    <p
+      className={cx(
+        "flex items-center gap-1.5 rounded-sm border px-3 py-1.5 text-xs font-mono",
+        surface,
+      )}
+      role="status"
+      aria-live="polite"
+    >
+      <span aria-hidden className="shrink-0 flex items-center">{icon}</span>
+      <span className="break-all">{text}</span>
     </p>
   );
 }

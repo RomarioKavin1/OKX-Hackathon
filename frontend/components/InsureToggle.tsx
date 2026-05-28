@@ -17,7 +17,7 @@
  *
  * The premium is charged via USDC approve before insure:
  *   1. approve(InsurancePool, premium)
- *   2. insure(matchday, tokenId, rentalCost)    ← pool pulls premium internally
+ *   2. insure(matchday, tokenId, rentalCost)    <- pool pulls premium internally
  *
  * Payout formula (mirrors InsurancePool):
  *   premium = rentalCost * 20% (premiumBps=2000)
@@ -27,25 +27,16 @@
 import { useCallback, useState } from "react";
 import type { Hex } from "viem";
 import { TxButton } from "@/components/TxButton";
+import { Panel, Pill, Button, cx } from "@/components/ui";
 import { ADDRESSES, ABIS } from "@/lib/contracts";
 import { insurancePremium, insurancePayout } from "@/lib/business/fees";
 import { fmtUsdc } from "@/lib/business/format";
 
-// ── Shared section wrapper ────────────────────────────────────────────────────
+// ── Shared form-control class ─────────────────────────────────────────────────
 
-interface SectionProps {
-  title: string;
-  children: React.ReactNode;
-}
-
-function InsureSection({ title, children }: SectionProps) {
-  return (
-    <div className="rounded border border-blue-100 bg-blue-50 p-4">
-      <h3 className="mb-3 text-sm font-semibold text-blue-800">{title}</h3>
-      {children}
-    </div>
-  );
-}
+const FORM_CONTROL =
+  "rounded-sm border border-line-2 bg-paper-2 text-ink px-3 h-10 text-sm " +
+  "focus-visible:outline-2 focus-visible:outline-cobalt w-full";
 
 // ── InsureToggle ──────────────────────────────────────────────────────────────
 
@@ -96,32 +87,53 @@ export function InsureToggle({
 
   return (
     <div className="flex flex-col gap-3">
-      {/* Toggle */}
-      <label className="flex cursor-pointer items-center gap-2">
-        <input
-          type="checkbox"
-          checked={enabled}
-          onChange={(e) => setEnabled(e.target.checked)}
-          className="h-4 w-4 accent-blue-600"
-        />
-        <span className="text-sm font-medium text-zinc-700">
-          Insure this rental{" "}
-          <span className="text-blue-700">(+{fmtUsdc(premium)} USDC premium)</span>
-        </span>
+      {/* Toggle row */}
+      <label className={cx(
+        "flex cursor-pointer items-center justify-between gap-3 rounded-sm",
+        "border px-3 py-2.5 transition-colors duration-150",
+        enabled
+          ? "border-cobalt/40 bg-cobalt/8"
+          : "border-line-2 bg-paper-2 hover:bg-paper-3",
+      )}>
+        <div className="flex items-center gap-2.5 min-w-0">
+          <input
+            type="checkbox"
+            checked={enabled}
+            onChange={(e) => setEnabled(e.target.checked)}
+            className={cx(
+              "h-4 w-4 shrink-0 rounded-xs border border-line-2",
+              "accent-[color:var(--cobalt)]",
+            )}
+          />
+          <span className="text-sm font-medium text-ink leading-tight">
+            Insure this rental
+          </span>
+        </div>
+        <Pill tone={enabled ? "cobalt" : "neutral"}>
+          +{fmtUsdc(premium)} USDC
+        </Pill>
       </label>
 
       {/* Expanded insurance details + actions */}
       {enabled && (
-        <InsureSection title="DNP Insurance">
-          <div className="flex flex-col gap-3">
-            <p className="text-xs text-blue-700">
-              If your player did not play (0 minutes), you can claim a refund of{" "}
-              <span className="font-semibold">{fmtUsdc(expectedPayout)} USDC</span>{" "}
-              (rental + 50% of premium back).
-            </p>
+        <Panel variant="sunken" className="p-4">
+          <div className="flex flex-col gap-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted mb-1">
+                  DNP Insurance
+                </p>
+                <p className="text-xs text-ink-2 max-w-[36ch]">
+                  If your player did not play (0 minutes), claim a refund of{" "}
+                  <span className="font-semibold text-ink">{fmtUsdc(expectedPayout)} USDC</span>{" "}
+                  (rental cost + 50% of premium returned).
+                </p>
+              </div>
+              <Pill tone="violet">DNP cover</Pill>
+            </div>
 
-            <div className="flex flex-col gap-1">
-              <p className="text-xs font-medium text-zinc-500">
+            <div className="flex flex-col gap-1.5">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">
                 Step 1 — Approve {fmtUsdc(premium)} USDC to Insurance Pool
               </p>
               <TxButton
@@ -131,8 +143,8 @@ export function InsureToggle({
               />
             </div>
 
-            <div className="flex flex-col gap-1">
-              <p className="text-xs font-medium text-zinc-500">
+            <div className="flex flex-col gap-1.5">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">
                 Step 2 — Insure rental for Matchday {matchday}
               </p>
               <TxButton
@@ -142,7 +154,7 @@ export function InsureToggle({
               />
             </div>
           </div>
-        </InsureSection>
+        </Panel>
       )}
     </div>
   );
@@ -229,45 +241,63 @@ export function ClaimDnpPanel({
       : null;
 
   return (
-    <InsureSection title="Claim DNP Refund">
+    <Panel variant="sunken" className="p-4">
+      <div className="flex items-center justify-between border-b border-line pb-3 mb-4">
+        <div>
+          <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted">
+            Insurance claim
+          </p>
+          <h3 className="text-sm font-semibold text-ink">Claim DNP Refund</h3>
+        </div>
+        <Pill tone="violet">DNP</Pill>
+      </div>
+
       <div className="flex flex-col gap-3">
-        <p className="text-xs text-blue-700">
+        <p className="text-xs text-ink-2">
           If your player got 0 minutes this matchday, claim{" "}
-          <span className="font-semibold">{fmtUsdc(payout)} USDC</span> back
+          <span className="font-semibold text-ink">{fmtUsdc(payout)} USDC</span> back
           (rental + 50% of premium).
         </p>
 
         {proofState.tag === "idle" && (
-          <button
+          <Button
             type="button"
+            variant="secondary"
+            size="sm"
             onClick={fetchProof}
-            className="self-start rounded bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-500"
           >
             Check DNP eligibility
-          </button>
+          </Button>
         )}
 
         {proofState.tag === "loading" && (
-          <p className="text-xs text-zinc-500">Checking DNP status…</p>
+          <p className="text-xs text-muted">Checking DNP status...</p>
         )}
 
         {proofState.tag === "not-eligible" && (
-          <p className="rounded bg-zinc-100 px-3 py-2 text-xs text-zinc-600">
-            This player is not eligible for a DNP refund (played or no root posted yet).
-          </p>
+          <div className="rounded-sm bg-paper-3 border border-line-2 px-3 py-2">
+            <p className="text-xs text-muted">
+              This player is not eligible for a DNP refund (played or no root posted yet).
+            </p>
+          </div>
         )}
 
         {proofState.tag === "error" && (
-          <p className="rounded bg-red-50 px-3 py-2 text-xs text-red-700">
-            Error fetching proof: {proofState.message}
+          <div className="rounded-sm bg-danger/8 border border-danger/25 px-3 py-2 flex items-center justify-between gap-2">
+            <p className="text-xs text-danger">
+              Error fetching proof: {proofState.message}
+            </p>
             <button
               type="button"
               onClick={fetchProof}
-              className="ml-2 underline"
+              className={cx(
+                "shrink-0 text-xs font-medium text-danger underline underline-offset-2",
+                "hover:text-ink focus-visible:outline-2 focus-visible:outline-cobalt",
+              )}
             >
               Retry
             </button>
-          </p>
+          </div>
         )}
 
         {proofState.tag === "ready" && claimRequest && (
@@ -278,6 +308,6 @@ export function ClaimDnpPanel({
           />
         )}
       </div>
-    </InsureSection>
+    </Panel>
   );
 }

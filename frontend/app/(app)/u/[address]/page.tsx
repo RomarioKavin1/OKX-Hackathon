@@ -1,86 +1,103 @@
 import type { ProfileCard, TierSummary } from "@/app/api/profile/route";
-import { PLAYER_BY_ID } from "@/lib/data/players";
+import { PLAYER_BY_ID, tierStats } from "@/lib/data/players";
 import { fmtUsdc } from "@/lib/business/format";
+import { Tier } from "@/lib/types";
+import {
+  Panel,
+  Pill,
+  SectionHeading,
+  Stat,
+  EmptyState,
+  Skeleton,
+  TierBadge,
+  cx,
+} from "@/components/ui";
+import { PlayerCard } from "@/components/PlayerCard";
+import type { TierId } from "@/components/ui";
 
 // ── Module-scope sub-components ───────────────────────────────────────────────
 
-const TIER_LABEL = ["Common", "Rare", "Super Rare", "Unique"] as const;
-const TIER_COLOR = [
-  "text-zinc-600",
-  "text-sky-600",
-  "text-purple-600",
-  "text-amber-600",
-] as const;
-
-interface TierBadgeProps {
-  tier: number;
+/** Shorten 0x… address to "0x1234…abcd" */
+function shortenAddress(addr: string): string {
+  return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
 }
 
-function TierBadge({ tier }: TierBadgeProps) {
-  const label = TIER_LABEL[tier] ?? `Tier ${tier}`;
-  const color = TIER_COLOR[tier] ?? "text-zinc-600";
-  return <span className={`font-medium ${color}`}>{label}</span>;
+// ── Tier distribution strip ───────────────────────────────────────────────────
+
+interface TierDistributionProps {
+  summary: TierSummary;
 }
 
-interface ProfileCardRowProps {
-  card: ProfileCard;
-}
+function TierDistribution({ summary }: TierDistributionProps) {
+  const items: { label: string; count: number; tone: "neutral" | "cobalt" | "violet" | "gold" }[] = [
+    { label: "Common", count: summary.common, tone: "neutral" },
+    { label: "Rare", count: summary.rare, tone: "cobalt" },
+    { label: "Super Rare", count: summary.superRare, tone: "violet" },
+    { label: "Unique", count: summary.unique, tone: "gold" },
+  ];
 
-function ProfileCardRow({ card }: ProfileCardRowProps) {
-  const player = PLAYER_BY_ID.get(card.playerId as `0x${string}`);
+  const active = items.filter((i) => i.count > 0);
+
+  if (active.length === 0) return null;
 
   return (
-    <div className="flex items-center justify-between gap-4 rounded-lg border border-zinc-200 bg-white px-4 py-3">
-      <div className="flex flex-col gap-0.5">
-        <p className="text-sm font-semibold text-zinc-900">
-          {player ? player.name : `Player ${card.playerId.slice(0, 10)}…`}
-        </p>
-        <p className="text-xs text-zinc-500">
-          {player ? (
-            <>
-              <span>{player.nation}</span>
-              <span className="mx-1 opacity-40">·</span>
-              <span>{player.position}</span>
-              <span className="mx-1 opacity-40">·</span>
-            </>
-          ) : null}
-          <TierBadge tier={card.tier} />
-          <span className="mx-1 opacity-40">·</span>
-          <span>#{card.serialNumber}</span>
-        </p>
-      </div>
+    <div className="flex flex-wrap items-center gap-2" aria-label="Card tier distribution">
+      {active.map((item) => (
+        <Pill key={item.label} tone={item.tone}>
+          {item.label}: {item.count}
+        </Pill>
+      ))}
+      <span className="text-xs text-muted">
+        {summary.total} total
+      </span>
     </div>
   );
 }
 
-interface SummaryBarProps {
-  summary: TierSummary;
+// ── Single card grid item ─────────────────────────────────────────────────────
+
+interface ProfileCardItemProps {
+  card: ProfileCard;
 }
 
-function SummaryBar({ summary }: SummaryBarProps) {
-  const items = [
-    { label: "Common", count: summary.common, color: "bg-zinc-400" },
-    { label: "Rare", count: summary.rare, color: "bg-sky-500" },
-    { label: "Super Rare", count: summary.superRare, color: "bg-purple-500" },
-    { label: "Unique", count: summary.unique, color: "bg-amber-500" },
-  ];
+function ProfileCardItem({ card }: ProfileCardItemProps) {
+  const player = PLAYER_BY_ID.get(card.playerId as `0x${string}`);
+
+  if (!player) {
+    // Unknown player: render a minimal fallback row
+    return (
+      <Panel variant="outline" className="flex items-center gap-3 px-4 py-3">
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold text-ink">
+            Player {card.playerId.slice(0, 10)}…
+          </p>
+          <p className="mt-0.5 flex items-center gap-2 text-xs text-muted">
+            <TierBadge tier={card.tier as TierId} />
+            <span aria-hidden className="opacity-40">·</span>
+            <span className="font-mono">#{card.serialNumber}</span>
+          </p>
+        </div>
+      </Panel>
+    );
+  }
+
+  const tier = card.tier as TierId;
+  const stats = tierStats(player.base, tier as unknown as Tier);
 
   return (
-    <div className="flex flex-wrap gap-3">
-      {items
-        .filter((i) => i.count > 0)
-        .map((item) => (
-          <div key={item.label} className="flex items-center gap-1.5">
-            <span className={`h-2.5 w-2.5 rounded-full ${item.color}`} />
-            <span className="text-xs text-zinc-600">
-              {item.label}: <strong>{item.count}</strong>
-            </span>
-          </div>
-        ))}
-      <span className="text-xs text-zinc-500">
-        Total: <strong>{summary.total}</strong>
-      </span>
-    </div>
+    <PlayerCard
+      name={player.name}
+      nation={player.nation}
+      position={player.position}
+      tier={tier}
+      stats={stats}
+      size="sm"
+      footer={
+        <span className="font-mono text-xs text-muted" aria-label={`Serial number ${card.serialNumber}`}>
+          #{card.serialNumber}
+        </span>
+      }
+    />
   );
 }
 
@@ -95,43 +112,64 @@ interface CareerStats {
   seasonRank: number | null;
 }
 
-interface CareerStatsServerProps {
+interface CareerStatsPanelProps {
   stats: CareerStats;
 }
 
-function CareerStatsServer({ stats }: CareerStatsServerProps) {
+function CareerStatsPanel({ stats }: CareerStatsPanelProps) {
   return (
-    <section className="rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-4">
-      <h2 className="mb-3 text-sm font-semibold text-zinc-700">Career Stats</h2>
-      <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm sm:grid-cols-3">
+    <Panel variant="ink" className="p-6">
+      <p className="mb-5 text-xs font-semibold uppercase tracking-[0.18em] text-on-panel-muted">
+        Career totals
+      </p>
+      <dl
+        className="grid grid-cols-2 gap-x-6 gap-y-6 sm:grid-cols-3"
+        aria-label="Career statistics"
+      >
         <div>
-          <dt className="text-xs text-zinc-500">Matchdays played</dt>
-          <dd className="font-mono font-medium">{stats.matchdaysPlayed}</dd>
+          <Stat
+            value={stats.matchdaysPlayed}
+            label="Matchdays played"
+            tone="on-panel"
+          />
         </div>
         <div>
-          <dt className="text-xs text-zinc-500">Total points</dt>
-          <dd className="font-mono font-medium">{stats.totalPoints.toFixed(1)}</dd>
+          <Stat
+            value={stats.totalPoints.toFixed(1)}
+            label="Total points"
+            tone="on-panel"
+          />
         </div>
         <div>
-          <dt className="text-xs text-zinc-500">Best day</dt>
-          <dd className="font-mono font-medium">{stats.bestDayScore.toFixed(1)}</dd>
+          <Stat
+            value={stats.bestDayScore.toFixed(1)}
+            label="Best day"
+            tone="on-panel"
+          />
         </div>
         <div>
-          <dt className="text-xs text-zinc-500">Total won</dt>
-          <dd className="font-mono font-medium">{fmtUsdc(BigInt(stats.totalWon))} USDC</dd>
+          <Stat
+            value={`${fmtUsdc(BigInt(stats.totalWon))} USDC`}
+            label="Total won"
+            tone="on-panel"
+          />
         </div>
         <div>
-          <dt className="text-xs text-zinc-500">Total spent</dt>
-          <dd className="font-mono font-medium">{fmtUsdc(BigInt(stats.totalSpent))} USDC</dd>
+          <Stat
+            value={`${fmtUsdc(BigInt(stats.totalSpent))} USDC`}
+            label="Total spent"
+            tone="on-panel"
+          />
         </div>
         <div>
-          <dt className="text-xs text-zinc-500">Season rank</dt>
-          <dd className="font-mono font-medium">
-            {stats.seasonRank === null ? "—" : `#${stats.seasonRank}`}
-          </dd>
+          <Stat
+            value={stats.seasonRank === null ? "—" : `#${stats.seasonRank}`}
+            label="Season rank"
+            tone="on-panel"
+          />
         </div>
       </dl>
-    </section>
+    </Panel>
   );
 }
 
@@ -189,61 +227,103 @@ export default async function PublicProfilePage({
     fetchError = err instanceof Error ? err.message : "Unknown error";
   }
 
-  const shortenAddress = (addr: string) =>
-    `${addr.slice(0, 6)}…${addr.slice(-4)}`;
-
   return (
-    <main className="flex max-w-2xl flex-col gap-6">
-      <header>
-        <h1 className="text-2xl font-bold">Manager Profile</h1>
-        <p className="font-mono text-sm text-zinc-500 break-all">{address}</p>
-        <p className="mt-1 text-xs text-zinc-400">
-          Public card holdings for{" "}
-          <span className="font-semibold">{shortenAddress(address)}</span>
+    <main className="flex max-w-3xl flex-col gap-10">
+      {/* Page header */}
+      <header className="flex flex-col gap-2">
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-flame">
+          Manager
+        </p>
+        <h1 className="display text-4xl text-ink sm:text-5xl">
+          {shortenAddress(address)}
+        </h1>
+        <p
+          className="font-mono text-sm text-muted break-all"
+          aria-label={`Full address: ${address}`}
+        >
+          {address}
         </p>
       </header>
 
+      {/* Error state */}
       {fetchError && (
-        <p className="rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          Could not load profile: {fetchError}
-        </p>
+        <Panel variant="paper" className="p-5">
+          <p
+            className="flex items-center gap-2 text-sm text-danger"
+            role="alert"
+          >
+            <span aria-hidden>✗</span>
+            Could not load profile: {fetchError}
+          </p>
+        </Panel>
+      )}
+
+      {/* Loading skeleton (no data, no error) */}
+      {!fetchError && !profileData && (
+        <div className="flex flex-col gap-6">
+          <Skeleton className="h-36 w-full rounded-card" />
+          <Skeleton className="h-24 w-full rounded-card" />
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <Skeleton key={i} className="h-36 rounded-card" />
+            ))}
+          </div>
+        </div>
       )}
 
       {profileData && (
         <>
-          {/* Tier summary */}
-          <section className="rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-4">
-            <h2 className="mb-2 text-sm font-semibold text-zinc-700">
-              Card Holdings
-            </h2>
-            <SummaryBar summary={profileData.summary} />
+          {/* Holdings summary + tier distribution */}
+          <section aria-label="Card holdings">
+            <SectionHeading
+              kicker="Collection"
+              title="Card Holdings"
+              className="mb-4"
+            />
+            <Panel variant="paper" className="p-5">
+              {profileData.summary.total === 0 ? (
+                <p className="text-sm text-muted">No cards held.</p>
+              ) : (
+                <TierDistribution summary={profileData.summary} />
+              )}
+            </Panel>
           </section>
 
           {/* Career stats */}
-          {careerData && <CareerStatsServer stats={careerData} />}
-
-          {/* Card list */}
-          {profileData.cards.length === 0 ? (
-            <p className="text-sm text-zinc-500">
-              This manager doesn&apos;t own any cards yet.
-            </p>
-          ) : (
-            <section className="flex flex-col gap-2">
-              <h2 className="text-sm font-semibold text-zinc-700">
-                Cards ({profileData.cards.length})
-              </h2>
-              <div className="flex flex-col gap-2">
-                {profileData.cards.map((card) => (
-                  <ProfileCardRow key={card.tokenId} card={card} />
-                ))}
-              </div>
+          {careerData && (
+            <section aria-label="Career statistics">
+              <CareerStatsPanel stats={careerData} />
             </section>
           )}
-        </>
-      )}
 
-      {!fetchError && !profileData && (
-        <p className="text-sm opacity-60">Loading profile…</p>
+          {/* Card collection grid */}
+          <section aria-label={`Cards (${profileData.cards.length})`}>
+            <SectionHeading
+              kicker="Stickers"
+              title={`Cards (${profileData.cards.length})`}
+              className="mb-4"
+            />
+
+            {profileData.cards.length === 0 ? (
+              <EmptyState
+                icon="🗂"
+                title="No cards yet"
+                hint="This manager does not own any cards yet."
+              />
+            ) : (
+              <div
+                className={cx(
+                  "grid gap-3",
+                  "grid-cols-2 sm:grid-cols-3 lg:grid-cols-4",
+                )}
+              >
+                {profileData.cards.map((card) => (
+                  <ProfileCardItem key={card.tokenId} card={card} />
+                ))}
+              </div>
+            )}
+          </section>
+        </>
       )}
     </main>
   );

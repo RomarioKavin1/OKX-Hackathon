@@ -28,9 +28,20 @@ import type { Address, Hex } from "viem";
 
 import { staminaOf, cardUsedInMatchday } from "@/lib/actions/reads";
 import { STAMINA } from "@/lib/constants";
-import { PricingMode, TIER_NAME, type Tier } from "@/lib/types";
+import { PricingMode } from "@/lib/types";
 import { toUsdc } from "@/lib/business/format";
 
+import { PlayerCard } from "@/components/PlayerCard";
+import {
+  SectionHeading,
+  Pill,
+  Panel,
+  EmptyState,
+  Skeleton,
+  Button,
+  buttonClasses,
+  cx,
+} from "@/components/ui";
 import {
   ListForRentPanel,
   AutoListPanel,
@@ -41,6 +52,8 @@ import {
 } from "@/components/RentalActions";
 import { InsureToggle, ClaimDnpPanel } from "@/components/InsureToggle";
 import type { RentalsResponse, RentalListing } from "@/app/api/rentals/route";
+import type { Nation } from "@/lib/data/nations";
+import type { TierId } from "@/components/ui";
 
 // ── Mode label ────────────────────────────────────────────────────────────────
 
@@ -50,6 +63,12 @@ const MODE_LABEL: Record<number, string> = {
   [PricingMode.Suggested]: "Suggested",
 };
 
+// ── Shared form-control class ─────────────────────────────────────────────────
+
+const FORM_CONTROL =
+  "rounded-sm border border-line-2 bg-paper-2 text-ink px-3 h-10 text-sm " +
+  "focus-visible:outline-2 focus-visible:outline-cobalt";
+
 // ── Stamina badge ─────────────────────────────────────────────────────────────
 
 interface StaminaBadgeProps {
@@ -58,11 +77,7 @@ interface StaminaBadgeProps {
 
 function StaminaBadge({ value }: StaminaBadgeProps) {
   if (value === null) {
-    return (
-      <span className="rounded bg-zinc-100 px-2 py-0.5 text-xs text-zinc-500">
-        stamina …
-      </span>
-    );
+    return <Skeleton className="h-5 w-16" />;
   }
   const label =
     value > STAMINA.freshThreshold
@@ -70,16 +85,12 @@ function StaminaBadge({ value }: StaminaBadgeProps) {
       : value < STAMINA.fatiguedThreshold
         ? "Fatigued"
         : "Normal";
-  const cls =
-    label === "Fresh"
-      ? "bg-emerald-50 text-emerald-700"
-      : label === "Fatigued"
-        ? "bg-red-50 text-red-700"
-        : "bg-zinc-100 text-zinc-600";
+  const tone =
+    label === "Fresh" ? "ok" : label === "Fatigued" ? "danger" : "neutral";
   return (
-    <span className={`rounded px-2 py-0.5 text-xs font-medium ${cls}`}>
+    <Pill tone={tone}>
       {label} ({value})
-    </span>
+    </Pill>
   );
 }
 
@@ -91,20 +102,12 @@ interface AvailBadgeProps {
 
 function AvailBadge({ used }: AvailBadgeProps) {
   if (used === null) {
-    return (
-      <span className="rounded bg-zinc-100 px-2 py-0.5 text-xs text-zinc-500">
-        avail …
-      </span>
-    );
+    return <Skeleton className="h-5 w-20" />;
   }
   return used ? (
-    <span className="rounded bg-amber-50 px-2 py-0.5 text-xs text-amber-700">
-      Used this matchday
-    </span>
+    <Pill tone="warn">Used this matchday</Pill>
   ) : (
-    <span className="rounded bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700">
-      Available
-    </span>
+    <Pill tone="ok">Available</Pill>
   );
 }
 
@@ -128,24 +131,28 @@ function FilterBar({ filters, onChange, onApply, loading }: FilterBarProps) {
   return (
     <div className="flex flex-wrap items-end gap-3">
       <label className="flex flex-col gap-1">
-        <span className="text-xs font-medium text-zinc-500">Nation</span>
+        <span className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+          Nation
+        </span>
         <input
           type="text"
           placeholder="e.g. FRA"
-          className="w-24 rounded border border-zinc-300 bg-white px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-400"
+          className={cx(FORM_CONTROL, "w-24")}
           value={filters.nation}
           onChange={(e) => onChange({ ...filters, nation: e.target.value })}
         />
       </label>
 
       <label className="flex flex-col gap-1">
-        <span className="text-xs font-medium text-zinc-500">Tier</span>
+        <span className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+          Tier
+        </span>
         <select
-          className="rounded border border-zinc-300 bg-white px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-400"
+          className={cx(FORM_CONTROL, "w-32")}
           value={filters.tier}
           onChange={(e) => onChange({ ...filters, tier: e.target.value })}
         >
-          <option value="">All</option>
+          <option value="">All tiers</option>
           <option value="0">Common</option>
           <option value="1">Rare</option>
           <option value="2">Super Rare</option>
@@ -154,13 +161,15 @@ function FilterBar({ filters, onChange, onApply, loading }: FilterBarProps) {
       </label>
 
       <label className="flex flex-col gap-1">
-        <span className="text-xs font-medium text-zinc-500">Position</span>
+        <span className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+          Position
+        </span>
         <select
-          className="rounded border border-zinc-300 bg-white px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-400"
+          className={cx(FORM_CONTROL, "w-28")}
           value={filters.position}
           onChange={(e) => onChange({ ...filters, position: e.target.value })}
         >
-          <option value="">All</option>
+          <option value="">All positions</option>
           <option value="GK">GK</option>
           <option value="DEF">DEF</option>
           <option value="MID">MID</option>
@@ -169,26 +178,31 @@ function FilterBar({ filters, onChange, onApply, loading }: FilterBarProps) {
       </label>
 
       <label className="flex flex-col gap-1">
-        <span className="text-xs font-medium text-zinc-500">Max price (USDC)</span>
+        <span className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+          Max price (USDC)
+        </span>
         <input
           type="number"
           min="0"
           step="0.01"
           placeholder="any"
-          className="w-28 rounded border border-zinc-300 bg-white px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-400"
+          className={cx(FORM_CONTROL, "w-28")}
           value={filters.maxPrice}
           onChange={(e) => onChange({ ...filters, maxPrice: e.target.value })}
         />
       </label>
 
-      <button
+      <Button
         type="button"
+        variant="primary"
+        size="md"
         disabled={loading}
+        loading={loading}
         onClick={onApply}
-        className="self-end rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-40"
+        className="self-end"
       >
-        {loading ? "Loading…" : "Search"}
-      </button>
+        {loading ? "Searching" : "Search"}
+      </Button>
     </div>
   );
 }
@@ -213,7 +227,7 @@ function CardTile({ listing, walletAddress, checkMatchday, onSuccess }: CardTile
   const [usedThisMatchday, setUsedThisMatchday] = useState<boolean | null>(null);
   const [expanded, setExpanded] = useState(false);
   // Insurance: track the matchday chosen in the rent panel so the insure/claim
-  // toggle stays in sync.  We track it here so InsureToggle + ClaimDnpPanel share
+  // toggle stays in sync. We track it here so InsureToggle + ClaimDnpPanel share
   // the same matchday value.
   const [rentMatchday, setRentMatchday] = useState<number>(checkMatchday);
 
@@ -247,7 +261,7 @@ function CardTile({ listing, walletAddress, checkMatchday, onSuccess }: CardTile
   const priceValueBig = BigInt(listing.priceValue);
   const priceDisplay =
     listing.mode === PricingMode.FloorPegged
-      ? `${listing.priceValue} bps of floor`
+      ? `${listing.priceValue} bps`
       : `${(Number(priceValueBig) / 1_000_000).toFixed(2)} USDC`;
 
   // Dummy resolvedPrice for RentPanel (best effort: treat non-FloorPegged as exact price)
@@ -261,46 +275,52 @@ function CardTile({ listing, walletAddress, checkMatchday, onSuccess }: CardTile
     onSuccess(listing.tokenId);
   };
 
-  return (
-    <article className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
-      {/* Header row */}
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex flex-col gap-0.5">
-          <span className="text-sm font-semibold">
-            Token #{listing.tokenId.slice(-8)}
-          </span>
-          <span className="text-xs text-zinc-500">
-            {TIER_NAME[listing.tier as Tier]} ·{" "}
-            {listing.position ?? "?"} ·{" "}
-            {listing.nation ?? "—"}
-          </span>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-1">
-          <StaminaBadge value={stamina} />
-          <AvailBadge used={usedThisMatchday} />
-          <span className="rounded bg-zinc-100 px-2 py-0.5 text-xs text-zinc-600">
-            {MODE_LABEL[listing.mode] ?? "?"} · {priceDisplay}
-          </span>
-        </div>
+  // Build a minimal footer for PlayerCard: price pill + Rent / Manage toggle
+  const cardFooter = (
+    <div className="flex items-center justify-between gap-2 py-0.5">
+      <div className="flex flex-col gap-0.5">
+        <span className="tabular-nums font-semibold text-ink text-xs leading-none">
+          {listing.mode === PricingMode.FloorPegged
+            ? priceDisplay
+            : (Number(priceValueBig) / 1_000_000).toFixed(2) + " USDC"}
+        </span>
+        <span className="text-[10px] text-muted leading-none">
+          {MODE_LABEL[listing.mode] ?? "?"}
+        </span>
       </div>
-
-      {/* Owner tag */}
-      <p className="mt-1 truncate text-xs text-zinc-400">
-        Owner: {listing.owner}
-      </p>
-
-      {/* Expand / collapse actions */}
       <button
         type="button"
-        className="mt-3 text-xs font-medium text-zinc-600 underline hover:text-zinc-900"
+        aria-expanded={expanded}
+        aria-controls={`rental-actions-${listing.tokenId}`}
         onClick={() => setExpanded((v) => !v)}
+        className={buttonClasses(isOwner ? "secondary" : "cta", "sm")}
       >
-        {expanded ? "Hide actions" : "Show actions"}
+        {isOwner ? "Manage" : "Rent"}
       </button>
+    </div>
+  );
+
+  return (
+    <article aria-label={`Rental listing for token ${listing.tokenId.slice(-8)}`}>
+      <PlayerCard
+        name={`#${listing.tokenId.slice(-8)}`}
+        nation={(listing.nation ?? "BRA") as Nation}
+        position={(listing.position ?? "MID") as "GK" | "DEF" | "MID" | "FWD"}
+        tier={(listing.tier ?? 0) as TierId}
+        footer={cardFooter}
+        corner={
+          <div className="flex flex-col items-end gap-1">
+            <StaminaBadge value={stamina} />
+            <AvailBadge used={usedThisMatchday} />
+          </div>
+        }
+      />
 
       {expanded && (
-        <div className="mt-4 flex flex-col gap-4">
+        <div
+          id={`rental-actions-${listing.tokenId}`}
+          className="mt-2 flex flex-col gap-3"
+        >
           {/* Owner flows */}
           {isOwner && (
             <>
@@ -331,30 +351,33 @@ function CardTile({ listing, walletAddress, checkMatchday, onSuccess }: CardTile
               />
 
               {/* DNP Insurance — shown alongside the rent flow (Task 7.3) */}
-              <div className="flex flex-col gap-1">
-                <div className="flex items-center gap-2">
-                  <label className="text-xs font-medium text-zinc-500">
-                    Insurance matchday:
-                  </label>
-                  <select
-                    className="rounded border border-zinc-300 bg-white px-2 py-0.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-400"
-                    value={rentMatchday}
-                    onChange={(e) => setRentMatchday(Number(e.target.value))}
-                  >
-                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((d) => (
-                      <option key={d} value={d}>
-                        Matchday {d}
-                      </option>
-                    ))}
-                  </select>
+              <Panel variant="paper" className="p-4">
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-center justify-between border-b border-line pb-3">
+                    <p className="text-xs font-semibold text-ink">DNP Insurance</p>
+                    <label className="flex items-center gap-2 text-xs text-muted">
+                      <span className="text-[10px] uppercase tracking-[0.14em]">Matchday</span>
+                      <select
+                        className="rounded-sm border border-line-2 bg-paper-2 text-ink px-2 h-7 text-xs focus-visible:outline-2 focus-visible:outline-cobalt"
+                        value={rentMatchday}
+                        onChange={(e) => setRentMatchday(Number(e.target.value))}
+                      >
+                        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((d) => (
+                          <option key={d} value={d}>
+                            MD {d}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                  <InsureToggle
+                    matchday={rentMatchday}
+                    tokenId={tokenIdBig}
+                    rentalCost={resolvedPrice}
+                    onSuccess={handleSuccess}
+                  />
                 </div>
-                <InsureToggle
-                  matchday={rentMatchday}
-                  tokenId={tokenIdBig}
-                  rentalCost={resolvedPrice}
-                  onSuccess={handleSuccess}
-                />
-              </div>
+              </Panel>
 
               {/* DNP Refund Claim — shown after the oracle posts a DNP root */}
               <ClaimDnpPanel
@@ -375,6 +398,29 @@ function CardTile({ listing, walletAddress, checkMatchday, onSuccess }: CardTile
         </div>
       )}
     </article>
+  );
+}
+
+// ── Skeleton grid ─────────────────────────────────────────────────────────────
+
+function ListingSkeletons() {
+  return (
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {Array.from({ length: 6 }).map((_, i) => (
+        <div key={i} className="rounded-card border-2 border-line-2 bg-paper-2 overflow-hidden shadow-sticker">
+          <Skeleton className="h-7 rounded-none" />
+          <div className="p-3 flex gap-3">
+            <Skeleton className="size-12 rounded-full shrink-0" />
+            <div className="flex-1 flex flex-col gap-2">
+              <Skeleton className="h-8 w-12" />
+              <Skeleton className="h-4 w-24" />
+              <Skeleton className="h-3 w-16" />
+            </div>
+          </div>
+          <Skeleton className="h-9 rounded-none" />
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -447,75 +493,117 @@ export default function RentalsPage() {
   };
 
   return (
-    <main className="flex max-w-4xl flex-col gap-6">
-      <header>
-        <h1 className="text-2xl font-bold">Rental Market</h1>
-        <p className="text-sm opacity-70">
-          Browse available cards to rent for a matchday, or list your cards for others to rent.
+    <main className="flex max-w-5xl flex-col gap-8">
+      {/* Page header */}
+      <div className="flex flex-col gap-4">
+        <SectionHeading
+          kicker="Rental Market"
+          title="Field a star for a matchday"
+          action={
+            <Pill tone="flame">
+              <span aria-hidden>●</span> From ~$0.30 / match
+            </Pill>
+          }
+        />
+        <p className="max-w-xl text-sm text-ink-2">
+          Browse available cards to rent for one matchday, or list your own cards for others to rent.
+          Pricing is set by the owner; cancel before kickoff for a 90% refund.
         </p>
-      </header>
+      </div>
 
+      {/* No wallet warning */}
       {!address && (
-        <p className="rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          Connect your wallet to rent or list cards.
-        </p>
+        <Panel variant="outline" className="flex items-center gap-3 px-4 py-3">
+          <Pill tone="warn">No wallet</Pill>
+          <p className="text-sm text-ink-2">
+            Connect your wallet to rent or list cards.
+          </p>
+        </Panel>
       )}
 
-      {/* Matchday selector for availability check */}
-      <section className="flex items-center gap-3">
-        <label className="text-sm font-medium" htmlFor="check-matchday">
-          Check availability for matchday:
+      {/* Controls row */}
+      <Panel variant="sunken" className="flex flex-wrap items-end gap-6 px-4 py-4">
+        {/* Matchday selector */}
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+            Check availability for
+          </span>
+          <select
+            id="check-matchday"
+            className={cx(FORM_CONTROL, "w-36")}
+            value={checkMatchday}
+            onChange={(e) => setCheckMatchday(Number(e.target.value))}
+          >
+            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((d) => (
+              <option key={d} value={d}>
+                Matchday {d}
+              </option>
+            ))}
+          </select>
         </label>
-        <select
-          id="check-matchday"
-          className="rounded border border-zinc-300 bg-white px-3 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-400"
-          value={checkMatchday}
-          onChange={(e) => setCheckMatchday(Number(e.target.value))}
-        >
-          {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((d) => (
-            <option key={d} value={d}>
-              Matchday {d}
-            </option>
-          ))}
-        </select>
-      </section>
 
-      {/* Filters */}
-      <section>
+        {/* Divider */}
+        <div className="hidden h-10 w-px bg-line-2 sm:block" aria-hidden />
+
+        {/* Filter bar */}
         <FilterBar
           filters={filters}
           onChange={setFilters}
           onApply={() => triggerFetch(filters)}
           loading={loading}
         />
-      </section>
+      </Panel>
 
       {/* Error state */}
       {error && (
-        <p className="rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          Error: {error}
-        </p>
+        <Panel variant="outline" className="flex items-center justify-between gap-3 px-4 py-3 border-danger/30">
+          <div className="flex items-center gap-2">
+            <Pill tone="danger">Error</Pill>
+            <p className="text-sm text-ink-2">{error}</p>
+          </div>
+          <Button variant="secondary" size="sm" onClick={handleRefresh}>
+            Retry
+          </Button>
+        </Panel>
       )}
 
-      {/* Results */}
+      {/* Loading skeletons */}
+      {loading && <ListingSkeletons />}
+
+      {/* Empty state */}
       {!loading && !error && listings.length === 0 && (
-        <p className="text-sm opacity-60">No active listings match your filters.</p>
+        <EmptyState
+          icon="🃏"
+          title="No listings found"
+          hint="Try adjusting your filters, or list one of your own cards to earn rental income."
+          action={
+            <Button variant="secondary" size="sm" onClick={handleRefresh}>
+              Refresh
+            </Button>
+          }
+        />
       )}
 
-      {listings.length > 0 && (
-        <section className="flex flex-col gap-4">
-          <p className="text-xs text-zinc-500">
-            {listings.length} listing{listings.length !== 1 ? "s" : ""} found
-          </p>
-          {listings.map((listing) => (
-            <CardTile
-              key={listing.tokenId}
-              listing={listing}
-              walletAddress={address}
-              checkMatchday={checkMatchday}
-              onSuccess={handleRefresh}
-            />
-          ))}
+      {/* Results grid */}
+      {!loading && listings.length > 0 && (
+        <section aria-label={`${listings.length} rental listing${listings.length !== 1 ? "s" : ""}`}>
+          <div className="mb-4 flex items-center gap-2">
+            <span className="text-xs font-semibold text-muted">
+              {listings.length} listing{listings.length !== 1 ? "s" : ""}
+            </span>
+          </div>
+
+          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            {listings.map((listing) => (
+              <CardTile
+                key={listing.tokenId}
+                listing={listing}
+                walletAddress={address}
+                checkMatchday={checkMatchday}
+                onSuccess={handleRefresh}
+              />
+            ))}
+          </div>
         </section>
       )}
     </main>

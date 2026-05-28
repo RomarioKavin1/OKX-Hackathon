@@ -17,6 +17,7 @@
 import { useState } from "react";
 import type { Hex } from "viem";
 import { TxButton } from "@/components/TxButton";
+import { Panel, Pill, cx } from "@/components/ui";
 import { ADDRESSES, ABIS } from "@/lib/contracts";
 import { RENTAL_SPLIT, BPS_DENOMINATOR } from "@/lib/constants";
 import { PricingMode } from "@/lib/types";
@@ -30,35 +31,76 @@ const MODE_LABELS: Record<number, string> = {
   [PricingMode.Suggested]: "Suggested",
 };
 
-// ── Section wrapper ───────────────────────────────────────────────────────────
+// ── Shared form-control class ─────────────────────────────────────────────────
 
-interface SectionProps {
-  title: string;
-  children: React.ReactNode;
-}
+const FORM_CONTROL =
+  "rounded-sm border border-line-2 bg-paper-2 text-ink px-3 h-10 text-sm " +
+  "focus-visible:outline-2 focus-visible:outline-cobalt w-full";
 
-function Section({ title, children }: SectionProps) {
-  return (
-    <div className="rounded border border-zinc-200 bg-zinc-50 p-4">
-      <h3 className="mb-3 text-sm font-semibold text-zinc-700">{title}</h3>
-      {children}
-    </div>
-  );
-}
-
-// ── Inline field ─────────────────────────────────────────────────────────────
+// ── Shared field label ────────────────────────────────────────────────────────
 
 interface FieldProps {
   label: string;
   children: React.ReactNode;
+  hint?: string;
 }
 
-function Field({ label, children }: FieldProps) {
+function Field({ label, children, hint }: FieldProps) {
   return (
-    <label className="flex flex-col gap-1">
-      <span className="text-xs font-medium text-zinc-500">{label}</span>
+    <label className="flex flex-col gap-1.5">
+      <span className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+        {label}
+      </span>
       {children}
+      {hint && (
+        <span className="text-xs text-muted">{hint}</span>
+      )}
     </label>
+  );
+}
+
+// ── Matchday selector ─────────────────────────────────────────────────────────
+
+interface MatchdaySelectorProps {
+  value: number;
+  onChange: (v: number) => void;
+  id?: string;
+}
+
+function MatchdaySelector({ value, onChange, id }: MatchdaySelectorProps) {
+  return (
+    <select
+      id={id}
+      className={FORM_CONTROL}
+      value={value}
+      onChange={(e) => onChange(Number(e.target.value))}
+    >
+      {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((d) => (
+        <option key={d} value={d}>
+          Matchday {d}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+// ── Panel header ──────────────────────────────────────────────────────────────
+
+interface PanelHeaderProps {
+  title: string;
+  kicker?: string;
+}
+
+function PanelHeader({ title, kicker }: PanelHeaderProps) {
+  return (
+    <div className="border-b border-line pb-3 mb-4">
+      {kicker && (
+        <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted">
+          {kicker}
+        </p>
+      )}
+      <h3 className="text-sm font-semibold text-ink">{title}</h3>
+    </div>
   );
 }
 
@@ -106,11 +148,12 @@ export function ListForRentPanel({ tokenId, onSuccess }: ListForRentPanelProps) 
     : null;
 
   return (
-    <Section title="List for Rent">
-      <div className="flex flex-col gap-3">
+    <Panel variant="paper" className="p-4">
+      <PanelHeader kicker="Owner action" title="List for Rent" />
+      <div className="flex flex-col gap-4">
         <Field label="Pricing mode">
           <select
-            className="rounded border border-zinc-300 bg-white px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-400"
+            className={FORM_CONTROL}
             value={mode}
             onChange={(e) => {
               setMode(Number(e.target.value));
@@ -130,8 +173,13 @@ export function ListForRentPanel({ tokenId, onSuccess }: ListForRentPanelProps) 
         <Field
           label={
             mode === PricingMode.FloorPegged
-              ? "Basis points of floor (e.g. 10000 = 100%)"
+              ? "Basis points of floor"
               : "Price (USDC)"
+          }
+          hint={
+            mode === PricingMode.FloorPegged
+              ? "Integer bps, e.g. 10000 = 100% of floor price"
+              : undefined
           }
         >
           <input
@@ -139,14 +187,14 @@ export function ListForRentPanel({ tokenId, onSuccess }: ListForRentPanelProps) 
             min={mode === PricingMode.FloorPegged ? "1" : "0"}
             max={mode === PricingMode.FloorPegged ? "10000" : undefined}
             step={mode === PricingMode.FloorPegged ? "1" : "0.01"}
-            className="rounded border border-zinc-300 bg-white px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-400"
+            className={FORM_CONTROL}
             value={priceInput}
             onChange={(e) => setPriceInput(e.target.value)}
           />
         </Field>
 
         {!isValid && (
-          <p className="text-xs text-red-600">Enter a valid price to enable simulation.</p>
+          <Pill tone="danger">Enter a valid price to enable simulation.</Pill>
         )}
 
         {request && (
@@ -158,7 +206,7 @@ export function ListForRentPanel({ tokenId, onSuccess }: ListForRentPanelProps) 
           />
         )}
       </div>
-    </Section>
+    </Panel>
   );
 }
 
@@ -223,27 +271,38 @@ export function AutoListPanel({
   };
 
   return (
-    <Section title="Auto-list at Floor (FR-R5)">
-      <div className="flex flex-col gap-3">
-        <p className="text-xs text-zinc-500">
+    <Panel variant="paper" className="p-4">
+      <div className="flex items-center justify-between border-b border-line pb-3 mb-4">
+        <div>
+          <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted">
+            Owner action
+          </p>
+          <h3 className="text-sm font-semibold text-ink">Auto-list at Floor</h3>
+        </div>
+        <Pill tone={isAutoListed ? "ok" : "neutral"}>
+          {isAutoListed ? "Active" : "Inactive"}
+        </Pill>
+      </div>
+
+      <div className="flex flex-col gap-4">
+        <p className="text-xs text-muted">
           A FloorPegged listing at 100% automatically prices to the on-chain floor. Update the
           floor price below or stop auto-listing at any time.
         </p>
 
-        {/* Set floor price */}
         <Field label="Floor price (USDC)">
           <input
             type="number"
             min="0"
             step="0.01"
-            className="rounded border border-zinc-300 bg-white px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-400"
+            className={FORM_CONTROL}
             value={floorInput}
             onChange={(e) => setFloorInput(e.target.value)}
           />
         </Field>
 
         {!floorValid && (
-          <p className="text-xs text-red-600">Enter a valid floor price to update.</p>
+          <Pill tone="danger">Enter a valid floor price to update.</Pill>
         )}
 
         {setFloorRequest && (
@@ -255,7 +314,6 @@ export function AutoListPanel({
           />
         )}
 
-        {/* Enable / disable auto-listing */}
         {!isAutoListed ? (
           <TxButton
             request={autoListRequest}
@@ -270,7 +328,7 @@ export function AutoListPanel({
           />
         )}
       </div>
-    </Section>
+    </Panel>
   );
 }
 
@@ -303,29 +361,28 @@ export function RentPanel({ tokenId, resolvedPrice, onSuccess }: RentPanelProps)
   };
 
   return (
-    <Section title="Rent this Card">
-      <div className="flex flex-col gap-3">
-        <p className="text-sm">
-          Rental cost:{" "}
-          <span className="font-medium">{fmtUsdc(resolvedPrice)} USDC</span>
-        </p>
+    <Panel variant="ink" className="p-4">
+      <PanelHeader kicker="Rent this card" title="Field a star for one matchday" />
+
+      <div className="flex flex-col gap-4">
+        <div className="flex items-baseline gap-2">
+          <span className="display text-2xl text-on-panel tabular-nums">
+            {fmtUsdc(resolvedPrice)}
+          </span>
+          <span className="text-xs font-semibold text-on-panel-muted">USDC / matchday</span>
+        </div>
 
         <Field label="Matchday">
-          <select
-            className="rounded border border-zinc-300 bg-white px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-400"
-            value={matchday}
-            onChange={(e) => setMatchday(Number(e.target.value))}
-          >
-            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((d) => (
-              <option key={d} value={d}>
-                Matchday {d}
-              </option>
-            ))}
-          </select>
+          <MatchdaySelector value={matchday} onChange={setMatchday} />
         </Field>
 
-        <div className="flex flex-col gap-2">
-          <p className="text-xs font-medium text-zinc-500">Step 1 — Approve USDC</p>
+        <div className="flex flex-col gap-1.5 rounded-sm bg-panel-2 p-3">
+          <p className={cx(
+            "text-xs font-semibold uppercase tracking-[0.14em]",
+            "text-on-panel-muted"
+          )}>
+            Step 1 — Approve USDC
+          </p>
           <TxButton
             request={approveRequest}
             label={`Approve ${fmtUsdc(resolvedPrice)} USDC`}
@@ -333,8 +390,13 @@ export function RentPanel({ tokenId, resolvedPrice, onSuccess }: RentPanelProps)
           />
         </div>
 
-        <div className="flex flex-col gap-2">
-          <p className="text-xs font-medium text-zinc-500">Step 2 — Rent Card</p>
+        <div className="flex flex-col gap-1.5 rounded-sm bg-panel-2 p-3">
+          <p className={cx(
+            "text-xs font-semibold uppercase tracking-[0.14em]",
+            "text-on-panel-muted"
+          )}>
+            Step 2 — Rent Card
+          </p>
           <TxButton
             request={rentRequest}
             label={`Rent for Matchday ${matchday}`}
@@ -342,7 +404,7 @@ export function RentPanel({ tokenId, resolvedPrice, onSuccess }: RentPanelProps)
           />
         </div>
       </div>
-    </Section>
+    </Panel>
   );
 }
 
@@ -370,27 +432,26 @@ export function SettlePanel({ tokenId, paid, onSuccess }: SettlePanelProps) {
   };
 
   return (
-    <Section title="Settle Rental">
-      <div className="flex flex-col gap-3">
-        <p className="text-xs text-zinc-500">
-          88 / 10 / 2 split: owner{" "}
-          <span className="font-medium">{fmtUsdc(ownerShare)}</span> / platform{" "}
-          <span className="font-medium">{fmtUsdc(platformShare)}</span> / original buyer{" "}
-          <span className="font-medium">{fmtUsdc(originalBuyerShare)}</span> USDC
-        </p>
+    <Panel variant="paper" className="p-4">
+      <PanelHeader kicker="Owner action" title="Settle Rental" />
+      <div className="flex flex-col gap-4">
+        <dl className="grid grid-cols-3 gap-2 rounded-sm bg-paper-3 p-3">
+          <div className="flex flex-col gap-0.5">
+            <dt className="text-[10px] font-semibold uppercase tracking-wide text-muted">Owner</dt>
+            <dd className="text-sm font-semibold text-ink tabular-nums">{fmtUsdc(ownerShare)}</dd>
+          </div>
+          <div className="flex flex-col gap-0.5">
+            <dt className="text-[10px] font-semibold uppercase tracking-wide text-muted">Platform</dt>
+            <dd className="text-sm font-semibold text-ink tabular-nums">{fmtUsdc(platformShare)}</dd>
+          </div>
+          <div className="flex flex-col gap-0.5">
+            <dt className="text-[10px] font-semibold uppercase tracking-wide text-muted">Original buyer</dt>
+            <dd className="text-sm font-semibold text-ink tabular-nums">{fmtUsdc(originalBuyerShare)}</dd>
+          </div>
+        </dl>
 
         <Field label="Matchday">
-          <select
-            className="rounded border border-zinc-300 bg-white px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-400"
-            value={matchday}
-            onChange={(e) => setMatchday(Number(e.target.value))}
-          >
-            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((d) => (
-              <option key={d} value={d}>
-                Matchday {d}
-              </option>
-            ))}
-          </select>
+          <MatchdaySelector value={matchday} onChange={setMatchday} />
         </Field>
 
         <TxButton
@@ -399,7 +460,7 @@ export function SettlePanel({ tokenId, paid, onSuccess }: SettlePanelProps) {
           onSuccess={onSuccess}
         />
       </div>
-    </Section>
+    </Panel>
   );
 }
 
@@ -424,25 +485,19 @@ export function CancelPanel({ tokenId, paid, onSuccess }: CancelPanelProps) {
   };
 
   return (
-    <Section title="Cancel Rental (Pre-lock)">
-      <div className="flex flex-col gap-3">
-        <p className="text-xs text-zinc-500">
-          You will receive a 90% refund:{" "}
-          <span className="font-medium">{fmtUsdc(refundAmount)} USDC</span>
-        </p>
+    <Panel variant="paper" className="p-4">
+      <PanelHeader kicker="Renter action" title="Cancel Rental" />
+      <div className="flex flex-col gap-4">
+        <div className="flex items-center gap-2 rounded-sm bg-warn/10 border border-warn/25 px-3 py-2">
+          <span aria-hidden className="text-warn text-sm">!</span>
+          <p className="text-xs text-ink-2">
+            Pre-lock cancellation returns a 90% refund:{" "}
+            <span className="font-semibold text-ink">{fmtUsdc(refundAmount)} USDC</span>
+          </p>
+        </div>
 
         <Field label="Matchday">
-          <select
-            className="rounded border border-zinc-300 bg-white px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-400"
-            value={matchday}
-            onChange={(e) => setMatchday(Number(e.target.value))}
-          >
-            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((d) => (
-              <option key={d} value={d}>
-                Matchday {d}
-              </option>
-            ))}
-          </select>
+          <MatchdaySelector value={matchday} onChange={setMatchday} />
         </Field>
 
         <TxButton
@@ -451,7 +506,7 @@ export function CancelPanel({ tokenId, paid, onSuccess }: CancelPanelProps) {
           onSuccess={onSuccess}
         />
       </div>
-    </Section>
+    </Panel>
   );
 }
 
@@ -474,24 +529,24 @@ export function PostponeRefundPanel({ tokenId, onSuccess }: PostponeRefundPanelP
   };
 
   return (
-    <Section title="Refund (Match Postponed — FR-R7)">
-      <div className="flex flex-col gap-3">
-        <p className="text-xs text-zinc-500">
+    <Panel variant="paper" className="p-4">
+      <div className="flex items-center justify-between border-b border-line pb-3 mb-4">
+        <div>
+          <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted">
+            Match postponed
+          </p>
+          <h3 className="text-sm font-semibold text-ink">Claim Postponement Refund</h3>
+        </div>
+        <Pill tone="warn">FR-R7</Pill>
+      </div>
+
+      <div className="flex flex-col gap-4">
+        <p className="text-xs text-muted">
           If the matchday was officially postponed, claim a full rental refund.
         </p>
 
         <Field label="Matchday">
-          <select
-            className="rounded border border-zinc-300 bg-white px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-400"
-            value={matchday}
-            onChange={(e) => setMatchday(Number(e.target.value))}
-          >
-            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((d) => (
-              <option key={d} value={d}>
-                Matchday {d}
-              </option>
-            ))}
-          </select>
+          <MatchdaySelector value={matchday} onChange={setMatchday} />
         </Field>
 
         <TxButton
@@ -500,6 +555,6 @@ export function PostponeRefundPanel({ tokenId, onSuccess }: PostponeRefundPanelP
           onSuccess={onSuccess}
         />
       </div>
-    </Section>
+    </Panel>
   );
 }

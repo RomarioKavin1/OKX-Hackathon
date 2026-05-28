@@ -1,14 +1,16 @@
 "use client";
 
 /**
- * PackReveal — animated card-flip reveal for up to 5 cards.
+ * PackReveal — animated sticker-pack reveal for up to 5 cards.
  *
- * Animation: each card starts face-down and flips to face-up with a staggered
- * CSS 3D flip (rotateY 180°). No new npm dependency; no globals.css edits.
- * Inline styles drive the 3D perspective/transform; Tailwind handles colours.
+ * Animation: each card starts face-down (pack back) and reveals face-up with
+ * a staggered Y-axis flip using --ease-out-expo. No layout properties animated.
+ * Unique cards get the foil treatment on the front face.
  */
 
+import type { ReactNode } from "react";
 import { Tier, TIER_NAME } from "@/lib/types";
+import { TIER_META, cx, Button } from "@/components/ui";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -26,16 +28,32 @@ export interface PackRevealProps {
   onDismiss?: () => void;
 }
 
-// ── Constants ─────────────────────────────────────────────────────────────────
+// ── Tier front-face styling: uses design tokens ────────────────────────────────
 
-const TIER_COLOUR: Record<Tier, { bg: string; text: string; border: string }> = {
-  [Tier.Common]:    { bg: "bg-zinc-700",    text: "text-zinc-100",  border: "border-zinc-500"    },
-  [Tier.Rare]:      { bg: "bg-blue-700",    text: "text-blue-100",  border: "border-blue-400"    },
-  [Tier.SuperRare]: { bg: "bg-purple-700",  text: "text-purple-100", border: "border-purple-400"  },
-  [Tier.Unique]:    { bg: "bg-yellow-600",  text: "text-yellow-50", border: "border-yellow-300"  },
+const TIER_FRONT: Record<Tier, { border: string; ribbon: string; ribbonText: string }> = {
+  [Tier.Common]:    {
+    border: "border-line-2",
+    ribbon: "bg-paper-3 text-ink-2",
+    ribbonText: "",
+  },
+  [Tier.Rare]:      {
+    border: "border-cobalt/55",
+    ribbon: "bg-cobalt text-on-panel",
+    ribbonText: "",
+  },
+  [Tier.SuperRare]: {
+    border: "border-violet/55",
+    ribbon: "bg-violet text-on-panel",
+    ribbonText: "",
+  },
+  [Tier.Unique]:    {
+    border: "border-gold/70",
+    ribbon: "foil text-[color:oklch(0.22_0.02_265)]",
+    ribbonText: "✦ ",
+  },
 };
 
-// ── Sub-components (module scope — no hook-in-loop; each is a proper component) ──
+// ── Sub-components ─────────────────────────────────────────────────────────────
 
 interface FlipCardProps {
   card: RevealedCard;
@@ -45,8 +63,9 @@ interface FlipCardProps {
 
 function FlipCard({ card, index }: FlipCardProps) {
   const tier = card.tier ?? Tier.Common;
-  const colours = TIER_COLOUR[tier];
-  // Stagger: 150 ms per card
+  const front = TIER_FRONT[tier];
+  const meta = TIER_META[tier];
+  // Stagger: 150 ms per card, ease-out-expo throughout
   const delayMs = index * 150;
 
   return (
@@ -54,7 +73,7 @@ function FlipCard({ card, index }: FlipCardProps) {
       role="img"
       aria-label={`Card #${card.tokenId} — ${TIER_NAME[tier]}`}
       style={{
-        perspective: "800px",
+        perspective: "900px",
         width: "120px",
         height: "168px",
         flexShrink: 0,
@@ -67,24 +86,38 @@ function FlipCard({ card, index }: FlipCardProps) {
           height: "100%",
           position: "relative",
           transformStyle: "preserve-3d",
-          animation: `packFlip 0.6s ease-out ${delayMs}ms both`,
+          animation: `packReveal 0.65s cubic-bezier(0.16, 1, 0.3, 1) ${delayMs}ms both`,
         }}
       >
-        {/* ── Back face (face-down) ── */}
+        {/* ── Back face: pack sleeve ── */}
         <div
-          className="rounded-xl border-2 border-zinc-600 bg-zinc-800 flex items-center justify-center"
+          className="rounded-card border-2 border-line-2 bg-panel grain flex flex-col items-center justify-center gap-2"
           style={{
             position: "absolute",
             inset: 0,
             backfaceVisibility: "hidden",
           }}
         >
-          <span className="text-3xl select-none" aria-hidden>🃏</span>
+          {/* Simple pack pattern: two horizontal rules + logo area */}
+          <div
+            aria-hidden
+            className="w-10 h-10 rounded-full border-2 border-on-panel/20 flex items-center justify-center"
+          >
+            <span className="text-on-panel/40 text-xl select-none font-display">P</span>
+          </div>
+          <div aria-hidden className="w-12 h-px bg-on-panel/15" />
+          <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-on-panel/30 select-none">
+            Panenka
+          </span>
         </div>
 
-        {/* ── Front face (revealed) ── */}
+        {/* ── Front face: revealed card ── */}
         <div
-          className={`rounded-xl border-2 ${colours.border} ${colours.bg} ${colours.text} flex flex-col items-center justify-between p-3`}
+          className={cx(
+            "rounded-card border-2 bg-paper-2 flex flex-col overflow-hidden shadow-lift",
+            front.border,
+            tier === Tier.Unique && "foil-sheen",
+          )}
           style={{
             position: "absolute",
             inset: 0,
@@ -92,23 +125,46 @@ function FlipCard({ card, index }: FlipCardProps) {
             transform: "rotateY(180deg)",
           }}
         >
-          <span className="text-xs font-bold uppercase tracking-wide opacity-80">
-            {TIER_NAME[tier]}
-          </span>
-          <span className="text-2xl font-bold select-none" aria-hidden>
-            {tier === Tier.Unique ? "🌟" : tier === Tier.SuperRare ? "✨" : tier === Tier.Rare ? "💫" : "⚽"}
-          </span>
-          <span className="font-mono text-xs break-all text-center opacity-70">
-            #{card.tokenId.toString()}
-          </span>
+          {/* Rarity ribbon — mirrors PlayerCard pattern */}
+          <div
+            className={cx(
+              "flex items-center justify-between px-2 py-1 text-[10px] font-semibold uppercase tracking-wide",
+              front.ribbon,
+            )}
+          >
+            <span>{front.ribbonText}{meta.name}</span>
+            <span className="opacity-70 font-mono">{meta.abbr}</span>
+          </div>
+
+          {/* Card body */}
+          <div className="flex flex-1 flex-col items-center justify-center gap-1.5 p-2">
+            {/* Tier icon */}
+            <span className="text-2xl select-none" aria-hidden>
+              {tier === Tier.Unique
+                ? "✦"
+                : tier === Tier.SuperRare
+                  ? "◆"
+                  : tier === Tier.Rare
+                    ? "◈"
+                    : "○"}
+            </span>
+          </div>
+
+          {/* Token ID footer */}
+          <div className="border-t border-line px-2 py-1.5">
+            <span className="font-mono text-[9px] text-muted break-all leading-tight">
+              #{card.tokenId.toString()}
+            </span>
+          </div>
         </div>
       </div>
 
-      {/* Keyframe injected inline — scoped by unique animation name. */}
+      {/* Keyframe — scoped animation name, ease-out-expo curve */}
       <style>{`
-        @keyframes packFlip {
-          0%   { transform: rotateY(0deg); }
-          100% { transform: rotateY(180deg); }
+        @keyframes packReveal {
+          0%   { transform: rotateY(0deg) scale(0.92); opacity: 0.6; }
+          40%  { opacity: 1; }
+          100% { transform: rotateY(180deg) scale(1); }
         }
       `}</style>
     </div>
@@ -128,14 +184,21 @@ export function PackReveal({ tokenIds, tiers, onDismiss }: PackRevealProps) {
       role="dialog"
       aria-modal="true"
       aria-label="Pack revealed"
-      className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-8 bg-black/80 p-6"
+      className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-8 bg-panel/95 p-6"
+      style={{ backdropFilter: "blur(2px)" }}
     >
-      <h2 className="text-2xl font-bold text-white tracking-wide">
-        Pack Revealed!
-      </h2>
+      {/* Heading */}
+      <div className="flex flex-col items-center gap-1 text-center">
+        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-on-panel-muted">
+          Sticker pack
+        </p>
+        <h2 className="display text-4xl text-on-panel">
+          Pack Revealed
+        </h2>
+      </div>
 
       {/* Cards row */}
-      <div className="flex flex-wrap items-center justify-center gap-4">
+      <div className="flex flex-wrap items-end justify-center gap-4">
         {cards.map((card, i) => (
           <FlipCard key={card.tokenId.toString()} card={card} index={i} />
         ))}
@@ -143,13 +206,14 @@ export function PackReveal({ tokenIds, tiers, onDismiss }: PackRevealProps) {
 
       {/* Dismiss */}
       {onDismiss && (
-        <button
+        <Button
           type="button"
+          variant="cta"
+          size="lg"
           onClick={onDismiss}
-          className="mt-4 rounded-lg bg-white px-6 py-2 text-sm font-semibold text-zinc-900 hover:bg-zinc-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
         >
           Collect cards
-        </button>
+        </Button>
       )}
     </div>
   );

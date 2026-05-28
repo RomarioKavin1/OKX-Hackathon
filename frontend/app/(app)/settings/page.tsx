@@ -27,6 +27,14 @@ import { chipBalance, usdcBalance } from "@/lib/actions/reads";
 import { fmtUsdc, toUsdc } from "@/lib/business/format";
 import { ADDRESSES, ABIS } from "@/lib/contracts";
 import { ChipId } from "@/lib/types";
+import {
+  Panel,
+  Pill,
+  SectionHeading,
+  Skeleton,
+  Button,
+  cx,
+} from "@/components/ui";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -77,22 +85,16 @@ const CHIPS: ChipMeta[] = [
 ];
 
 // ---------------------------------------------------------------------------
-// Sub-components
+// FORM_CONTROL class — shared input style per the design spec
 // ---------------------------------------------------------------------------
 
-interface SectionProps {
-  title: string;
-  children: React.ReactNode;
-}
+const FORM_CONTROL =
+  "rounded-sm border border-line-2 bg-paper-2 text-ink px-3 h-10 text-sm " +
+  "focus-visible:outline-2 focus-visible:outline-cobalt w-full";
 
-function Section({ title, children }: SectionProps) {
-  return (
-    <section className="rounded-xl border border-zinc-200 bg-white p-6 shadow-sm">
-      <h2 className="mb-4 text-lg font-semibold text-zinc-900">{title}</h2>
-      {children}
-    </section>
-  );
-}
+// ---------------------------------------------------------------------------
+// Sub-components
+// ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
 
@@ -142,25 +144,39 @@ function UsdcFaucetSection({ address, onSuccess }: UsdcFaucetSectionProps) {
   }
 
   return (
-    <Section title="USDC Faucet">
-      <p className="mb-2 text-sm text-zinc-600">
-        Mint <strong>1 000 test USDC</strong> to your wallet for use in packs,
-        rentals, and contests on the X Layer testnet.
-      </p>
-      {currentBalance !== null && (
-        <p className="mb-4 text-sm">
-          Current balance:{" "}
-          <span className="font-mono font-medium">
-            {fmtUsdc(currentBalance)} USDC
-          </span>
-        </p>
-      )}
-      <TxButton
-        request={faucetRequest}
-        label="Claim 1 000 test USDC"
-        onSuccess={handleFaucetSuccess}
+    <section aria-label="USDC Faucet">
+      <SectionHeading
+        kicker="Testnet"
+        title="USDC Faucet"
+        className="mb-4"
       />
-    </Section>
+      <Panel variant="paper" className="p-5">
+        <p className="mb-4 text-sm text-ink-2">
+          Mint <strong className="text-ink font-semibold">1,000 test USDC</strong> to
+          your wallet for use in packs, rentals, and contests on the X Layer testnet.
+        </p>
+
+        {/* Balance display */}
+        <div className="mb-4">
+          <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+            Current balance
+          </label>
+          {currentBalance !== null ? (
+            <div className={cx(FORM_CONTROL, "flex items-center font-mono select-all")}>
+              {fmtUsdc(currentBalance)} USDC
+            </div>
+          ) : (
+            <Skeleton className="h-10 w-full" />
+          )}
+        </div>
+
+        <TxButton
+          request={faucetRequest}
+          label="Claim 1,000 test USDC"
+          onSuccess={handleFaucetSuccess}
+        />
+      </Panel>
+    </section>
   );
 }
 
@@ -192,16 +208,16 @@ function ChipRow({ chip, address }: ChipRowProps) {
   }, [address, chip.id]);
 
   return (
-    <div className="flex items-start justify-between gap-4 rounded-lg bg-zinc-50 px-4 py-3">
+    <div className="flex items-center justify-between gap-4 border-b border-line py-3.5 last:border-0">
       <div className="min-w-0">
-        <p className="font-medium text-sm text-zinc-900">{chip.name}</p>
-        <p className="text-xs text-zinc-500 mt-0.5">{chip.description}</p>
+        <p className="text-sm font-semibold text-ink">{chip.name}</p>
+        <p className="mt-0.5 text-xs text-muted">{chip.description}</p>
       </div>
       <span
-        className="shrink-0 rounded-full bg-zinc-200 px-2.5 py-0.5 text-xs font-mono font-semibold text-zinc-700 min-w-[2rem] text-center"
+        className="shrink-0 font-mono text-sm font-semibold tabular-nums text-ink min-w-[2rem] text-right"
         aria-label={`${chip.name} balance`}
       >
-        {bal === null ? "…" : bal.toString()}
+        {bal === null ? <Skeleton className="inline-block h-4 w-6" /> : bal.toString()}
       </span>
     </div>
   );
@@ -213,16 +229,23 @@ interface ChipBalancesSectionProps {
 
 function ChipBalancesSection({ address }: ChipBalancesSectionProps) {
   return (
-    <Section title="Chip Balances">
-      <p className="mb-3 text-sm text-zinc-600">
-        Chips are one-use power-ups you play when committing your lineup.
-      </p>
-      <div className="flex flex-col gap-2">
-        {CHIPS.map((chip) => (
-          <ChipRow key={chip.id} chip={chip} address={address} />
-        ))}
-      </div>
-    </Section>
+    <section aria-label="Chip Balances">
+      <SectionHeading
+        kicker="Power-ups"
+        title="Chip Balances"
+        className="mb-4"
+      />
+      <Panel variant="paper" className="px-5 pt-1 pb-1">
+        <p className="mt-4 mb-2 text-sm text-ink-2">
+          Chips are one-use power-ups played when committing your lineup.
+        </p>
+        <div>
+          {CHIPS.map((chip) => (
+            <ChipRow key={chip.id} chip={chip} address={address} />
+          ))}
+        </div>
+      </Panel>
+    </section>
   );
 }
 
@@ -274,71 +297,112 @@ function ClaimHistorySection({ address }: ClaimHistorySectionProps) {
 
   if (error) {
     return (
-      <Section title="Claim History">
-        <p className="text-sm text-rose-600">Failed to load: {error}</p>
-      </Section>
+      <section aria-label="Claim History">
+        <SectionHeading
+          kicker="Payouts"
+          title="Claim History"
+          className="mb-4"
+        />
+        <Panel variant="paper" className="p-5">
+          <p className="flex items-center gap-2 text-sm text-danger" role="alert">
+            <span aria-hidden>✗</span>
+            Failed to load: {error}
+          </p>
+        </Panel>
+      </section>
     );
   }
 
   if (claims === null) {
     return (
-      <Section title="Claim History">
-        <p className="text-sm text-zinc-500">Loading…</p>
-      </Section>
-    );
-  }
-
-  if (claims.length === 0) {
-    return (
-      <Section title="Claim History">
-        <p className="text-sm text-zinc-500">
-          No payouts yet. Win a paid contest and your claim history appears here.
-        </p>
-      </Section>
+      <section aria-label="Claim History">
+        <SectionHeading
+          kicker="Payouts"
+          title="Claim History"
+          className="mb-4"
+        />
+        <Panel variant="paper" className="p-5 flex flex-col gap-2">
+          <Skeleton className="h-4 w-2/3" />
+          <Skeleton className="h-4 w-1/2" />
+          <Skeleton className="h-4 w-3/4" />
+        </Panel>
+      </section>
     );
   }
 
   return (
-    <Section title="Claim History">
-      <p className="mb-3 text-sm text-zinc-600">
-        Your last {claims.length} payout-eligible contest results. Unclaimed
-        prizes can be collected from each contest page.
-      </p>
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="text-left text-xs uppercase text-zinc-500 border-b border-zinc-200">
-              <th className="py-2 pr-3">Matchday</th>
-              <th className="py-2 pr-3">Contest</th>
-              <th className="py-2 pr-3">Rank</th>
-              <th className="py-2 pr-3">Payout</th>
-              <th className="py-2 pr-3">Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {claims.map((c) => (
-              <tr key={`${c.matchday}-${c.contestId}`} className="border-b border-zinc-100 last:border-0">
-                <td className="py-2 pr-3 font-mono">{c.matchday}</td>
-                <td className="py-2 pr-3 font-mono">#{c.contestId}</td>
-                <td className="py-2 pr-3 font-mono">{c.rank ?? "—"}</td>
-                <td className="py-2 pr-3 font-mono">{fmtUsdc(BigInt(c.payout))} USDC</td>
-                <td className="py-2 pr-3">
-                  {c.claimed ? (
-                    <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800">
-                      Claimed
-                    </span>
-                  ) : (
-                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">
-                      Unclaimed
-                    </span>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </Section>
+    <section aria-label="Claim History">
+      <SectionHeading
+        kicker="Payouts"
+        title="Claim History"
+        className="mb-4"
+      />
+      <Panel variant="paper" className="p-5">
+        {claims.length === 0 ? (
+          <p className="text-sm text-muted">
+            No payouts yet. Win a paid contest and your claim history appears here.
+          </p>
+        ) : (
+          <>
+            <p className="mb-4 text-sm text-ink-2">
+              Your last {claims.length} payout-eligible contest results. Unclaimed
+              prizes can be collected from each contest page.
+            </p>
+            <div className="overflow-x-auto -mx-5 px-5">
+              <table className="w-full text-sm min-w-[36rem]">
+                <thead>
+                  <tr className="border-b border-line-2">
+                    <th className="py-2 pr-4 text-left text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+                      Matchday
+                    </th>
+                    <th className="py-2 pr-4 text-left text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+                      Contest
+                    </th>
+                    <th className="py-2 pr-4 text-left text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+                      Rank
+                    </th>
+                    <th className="py-2 pr-4 text-left text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+                      Payout
+                    </th>
+                    <th className="py-2 text-left text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+                      Status
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {claims.map((c) => (
+                    <tr
+                      key={`${c.matchday}-${c.contestId}`}
+                      className="border-b border-line last:border-0"
+                    >
+                      <td className="py-2.5 pr-4 font-mono text-sm text-ink">
+                        {c.matchday}
+                      </td>
+                      <td className="py-2.5 pr-4 font-mono text-sm text-ink">
+                        #{c.contestId}
+                      </td>
+                      <td className="py-2.5 pr-4 font-mono text-sm text-ink">
+                        {c.rank ?? "—"}
+                      </td>
+                      <td className="py-2.5 pr-4 font-mono text-sm text-ink">
+                        {fmtUsdc(BigInt(c.payout))} USDC
+                      </td>
+                      <td className="py-2.5">
+                        {c.claimed ? (
+                          <Pill tone="ok">Claimed</Pill>
+                        ) : (
+                          <Pill tone="warn">Unclaimed</Pill>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+      </Panel>
+    </section>
   );
 }
 
@@ -357,36 +421,50 @@ function TutorialSection({ address }: TutorialSectionProps) {
   }
 
   return (
-    <Section title="Tutorial">
-      <p className="mb-4 text-sm text-zinc-600">
-        Already completed the onboarding walkthrough but want to see it again?
-        Click the button below — the next visit to{" "}
-        <a href="/onboard" className="underline font-medium">
-          /onboard
-        </a>{" "}
-        will replay the full tutorial.
-      </p>
-      {cleared ? (
-        <div
-          role="status"
-          className="rounded-lg bg-emerald-50 border border-emerald-200 px-4 py-3 text-sm text-emerald-800"
-        >
-          Tutorial flag cleared. Visit{" "}
-          <a href="/onboard" className="underline font-medium">
+    <section aria-label="Tutorial">
+      <SectionHeading
+        kicker="Onboarding"
+        title="Tutorial"
+        className="mb-4"
+      />
+      <Panel variant="paper" className="p-5">
+        <p className="mb-4 text-sm text-ink-2">
+          Already completed the onboarding walkthrough but want to see it again?
+          Click the button below. The next visit to{" "}
+          <a
+            href="/onboard"
+            className="font-semibold text-cobalt-ink underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-cobalt"
+          >
             /onboard
           </a>{" "}
-          to replay the walkthrough.
-        </div>
-      ) : (
-        <button
-          type="button"
-          onClick={handleReplayTutorial}
-          className="rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900"
-        >
-          Replay tutorial
-        </button>
-      )}
-    </Section>
+          will replay the full tutorial.
+        </p>
+        {cleared ? (
+          <div
+            role="status"
+            aria-live="polite"
+            className="rounded-sm border border-ok/30 bg-ok/10 px-4 py-3 text-sm text-ok"
+          >
+            Tutorial flag cleared. Visit{" "}
+            <a
+              href="/onboard"
+              className="font-semibold underline underline-offset-2"
+            >
+              /onboard
+            </a>{" "}
+            to replay the walkthrough.
+          </div>
+        ) : (
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={handleReplayTutorial}
+          >
+            Replay tutorial
+          </Button>
+        )}
+      </Panel>
+    </section>
   );
 }
 
@@ -407,36 +485,63 @@ export default function SettingsPage() {
 
   if (!ready) {
     return (
-      <main className="mx-auto flex max-w-2xl flex-col gap-6 py-8">
-        <p className="text-sm opacity-60" aria-live="polite">
-          Loading…
-        </p>
+      <main className="mx-auto flex max-w-2xl flex-col gap-6 py-10" aria-live="polite">
+        <Skeleton className="h-9 w-40" />
+        <Skeleton className="h-4 w-64" />
+        <Skeleton className="h-40 w-full rounded-card" />
       </main>
     );
   }
 
   if (!authenticated || !address) {
     return (
-      <main className="mx-auto flex max-w-2xl flex-col gap-8 py-8">
+      <main className="mx-auto flex max-w-2xl flex-col gap-8 py-10">
         <header>
-          <h1 className="text-3xl font-bold">Settings</h1>
-          <p className="mt-2 text-sm opacity-70">
-            Connect your wallet to access settings.
+          <p className="mb-1 text-xs font-semibold uppercase tracking-[0.18em] text-flame">
+            Account
+          </p>
+          <h1 className="display text-4xl text-ink">Settings</h1>
+          <p className="mt-2 text-sm text-ink-2">
+            Connect your wallet to manage balances and preferences.
           </p>
         </header>
-        <WalletButton />
+        <Panel variant="sunken" className="flex flex-col items-start gap-4 p-6">
+          <p className="text-sm text-muted">No wallet connected.</p>
+          <WalletButton />
+        </Panel>
       </main>
     );
   }
 
   return (
-    <main className="mx-auto flex max-w-2xl flex-col gap-6 py-8">
-      <header>
-        <h1 className="text-3xl font-bold">Settings</h1>
-        <p className="mt-2 text-sm opacity-70">
+    <main className="mx-auto flex max-w-2xl flex-col gap-10 py-10">
+      {/* Page header */}
+      <header className="flex flex-col gap-1">
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-flame">
+          Account
+        </p>
+        <h1 className="display text-4xl text-ink">Settings</h1>
+        <p className="mt-1 text-sm text-ink-2">
           Manage your wallet, balances, and preferences.
         </p>
       </header>
+
+      {/* Connected wallet callout */}
+      <Panel variant="ink" className="flex items-center justify-between gap-4 px-5 py-4">
+        <div className="min-w-0 flex-1">
+          <p className="mb-1 text-xs font-semibold uppercase tracking-[0.14em] text-on-panel-muted">
+            Connected wallet
+          </p>
+          <p
+            className="truncate font-mono text-sm text-on-panel"
+            title={address}
+            aria-label={`Connected address: ${address}`}
+          >
+            {address}
+          </p>
+        </div>
+        <Pill tone="cobalt">X Layer Testnet</Pill>
+      </Panel>
 
       <UsdcFaucetSection
         key={faucetKey}
@@ -449,10 +554,6 @@ export default function SettingsPage() {
       <ClaimHistorySection address={address} />
 
       <TutorialSection address={address} />
-
-      <footer className="mt-2 text-xs opacity-50">
-        Connected: <span className="font-mono">{address}</span>
-      </footer>
     </main>
   );
 }

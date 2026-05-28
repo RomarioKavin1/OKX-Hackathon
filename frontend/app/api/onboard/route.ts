@@ -6,7 +6,7 @@
  * Anti-sybil onboarding flow:
  *   1. Validate inputs.
  *   2. Verify the EIP-191 personal_sign signature recovers to `wallet`
- *      (message: "ManagerCup onboarding: <wallet>").
+ *      (message: "PANENKA onboarding: <wallet>").
  *   3. Reject if wallet already onboarded (one-per-wallet, FR-CT9).
  *   4. Airdrop 5 deterministic Common cards via the contract owner/minter key.
  *   5. Insert { wallet, tx_hash } into `onboarded`.
@@ -58,7 +58,7 @@ const STARTER_PLAYER_IDS: Hex[] = (() => {
 // ---------------------------------------------------------------------------
 
 function onboardMessage(wallet: string): string {
-  return `ManagerCup onboarding: ${wallet.toLowerCase()}`;
+  return `PANENKA onboarding: ${wallet.toLowerCase()}`;
 }
 
 // ---------------------------------------------------------------------------

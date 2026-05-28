@@ -34,7 +34,7 @@ export interface ProfileResponse {
 /**
  * GET /api/profile?address=0x...
  *
- * Returns the ManagerCup cards owned by the given address from the indexer
+ * Returns the PANENKA cards owned by the given address from the indexer
  * (cards table, owner = lower(address)), plus a tier count summary.
  *
  * Uses supabaseAnonServer — relies on the public "read cards" RLS policy.

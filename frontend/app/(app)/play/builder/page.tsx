@@ -1,21 +1,13 @@
 "use client";
 
 /**
- * /play/builder — Full lineup builder (Task 6.2)
+ * /play/builder — Full lineup builder
  *
- * Features:
- *  - Formation picker (6 from FORMATIONS)
- *  - Pitch slot grid (Pitch component)
- *  - Bench: fetched cards from /api/portfolio?wallet=
- *  - Drag-drop (native HTML5 DnD) AND keyboard-accessible path:
- *      1. Focus a bench card, press Enter → it becomes the "pending" card.
- *      2. Focus an empty slot, press Enter → card is placed.
- *      3. A slot with a card: Enter → slot enters replace mode; press Enter on
- *         a bench card → swaps it in.
- *      Announce state changes via aria-live region.
- *  - Captain + vice pickers; chip selector (balances via chipBalance)
- *  - Live synergy panel from previewLineup (no duplicated math)
- *  - validateLineup before enabling commit; commit via TxButton
+ * Panini Collector reskin: formation/captain/chip as styled controls,
+ * bench/available list with token-design vocabulary, commit via TxButton,
+ * validation messages as semantic Pills.
+ *
+ * Preserves: all hooks, formation logic, contract commit, drag/keyboard, aria-*.
  */
 
 import { useEffect, useReducer, useCallback, useRef } from "react";
@@ -39,6 +31,22 @@ import type { SlotState } from "@/components/Pitch";
 import { CardChip } from "@/components/CardChip";
 import type { CardChipData } from "@/components/CardChip";
 import { PLAYER_BY_ID } from "@/lib/data/players";
+import {
+  Panel,
+  Pill,
+  SectionHeading,
+  Skeleton,
+  EmptyState,
+  buttonClasses,
+  cx,
+} from "@/components/ui";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Constants
+// ─────────────────────────────────────────────────────────────────────────────
+
+const FORM_CONTROL =
+  "rounded-sm border border-line-2 bg-paper-2 text-ink px-3 h-10 text-sm focus-visible:outline-2 focus-visible:outline-cobalt";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -73,12 +81,10 @@ const CHIP_OPTIONS: ChipOption[] = [
 interface BuilderState {
   matchday: number;
   formationIndex: number;
-  /** tokenId placed in each slot (empty string = empty). Length = 11. */
   slotTokenIds: string[];
   captainIdx: number;
   viceIdx: number;
   chipId: ChipId;
-  /** The tokenId currently "pending" for keyboard-placement (null = none). */
   pendingCardId: string | null;
 }
 
@@ -107,15 +113,10 @@ function builderReducer(state: BuilderState, action: BuilderAction): BuilderStat
 
     case "PLACE_CARD": {
       const next = [...state.slotTokenIds];
-      // Remove the card from any previous slot it occupied
       const prev = next.indexOf(action.tokenId);
       if (prev !== -1) next[prev] = "";
       next[action.slotIndex] = action.tokenId;
-      return {
-        ...state,
-        slotTokenIds: next,
-        pendingCardId: null,
-      };
+      return { ...state, slotTokenIds: next, pendingCardId: null };
     }
 
     case "REMOVE_CARD": {
@@ -125,11 +126,11 @@ function builderReducer(state: BuilderState, action: BuilderAction): BuilderStat
     }
 
     case "SET_CAPTAIN":
-      if (action.idx === state.viceIdx) return state; // can't be both
+      if (action.idx === state.viceIdx) return state;
       return { ...state, captainIdx: action.idx };
 
     case "SET_VICE":
-      if (action.idx === state.captainIdx) return state; // can't be both
+      if (action.idx === state.captainIdx) return state;
       return { ...state, viceIdx: action.idx };
 
     case "SET_CHIP":
@@ -157,10 +158,7 @@ const INITIAL_STATE: BuilderState = {
 // Helper: resolve player info from playerId (bytes32)
 // ─────────────────────────────────────────────────────────────────────────────
 
-function resolveCard(
-  pc: PortfolioCard,
-  slotPosition?: Position,
-): CardChipData {
+function resolveCard(pc: PortfolioCard, slotPosition?: Position): CardChipData {
   const pid = pc.playerId as `0x${string}`;
   const def = PLAYER_BY_ID.get(pid);
   const naturalPos = (def?.position ?? "MID") as Position;
@@ -188,12 +186,13 @@ interface SynergyPanelProps {
 function SynergyPanel({ input }: SynergyPanelProps) {
   if (!input || input.cards.length < LINEUP_SIZE) {
     return (
-      <aside
+      <Panel
+        variant="sunken"
         aria-label="Lineup synergy preview"
-        className="rounded border border-zinc-200 bg-zinc-50 p-3 text-sm text-zinc-400"
+        className="flex items-center justify-center px-4 py-6 text-center"
       >
-        Fill all 11 slots to see synergy preview.
-      </aside>
+        <p className="text-xs text-muted">Fill all 11 slots to see synergy.</p>
+      </Panel>
     );
   }
 
@@ -211,62 +210,55 @@ function SynergyPanel({ input }: SynergyPanelProps) {
     return "●";
   }
 
-  function staminaStyle(s: "Fresh" | "Normal" | "Fatigued"): string {
-    if (s === "Fresh") return "text-emerald-700 font-semibold";
-    if (s === "Fatigued") return "text-orange-700 font-semibold";
-    return "text-zinc-600";
+  function staminaTone(s: "Fresh" | "Normal" | "Fatigued"): "ok" | "warn" | "neutral" {
+    if (s === "Fresh") return "ok";
+    if (s === "Fatigued") return "warn";
+    return "neutral";
   }
 
   return (
-    <aside
+    <Panel
+      variant="paper"
       aria-label="Lineup synergy preview"
       aria-live="polite"
       aria-atomic="true"
-      className="rounded border border-zinc-200 bg-zinc-50 p-3 flex flex-col gap-3 text-sm"
+      className="flex flex-col gap-4 p-4"
     >
-      <h3 className="font-semibold text-zinc-700">Lineup Analysis</h3>
+      <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+        Lineup analysis
+      </h3>
 
       {/* Country synergy */}
-      <div>
-        <p className="text-xs font-medium text-zinc-500 uppercase tracking-wide mb-1">Country Synergy</p>
-        <p className="text-zinc-800">
-          <span className={preview.countryMult > 1 ? "text-emerald-700 font-bold" : "text-zinc-500"}>
-            ×{preview.countryMult.toFixed(2)}
-          </span>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs text-ink-2">Country synergy</span>
+        <Pill tone={preview.countryMult > 1 ? "ok" : "neutral"}>
+          ×{preview.countryMult.toFixed(2)}
           {preview.countryMult > 1 && (
-            <span className="ml-1 text-xs text-zinc-400">
-              ({Math.round((preview.countryMult - 1) * 100)}% bonus)
+            <span className="opacity-70">
+              (+{Math.round((preview.countryMult - 1) * 100)}%)
             </span>
           )}
-        </p>
+        </Pill>
       </div>
 
       {/* Active formation synergies */}
       <div>
-        <p className="text-xs font-medium text-zinc-500 uppercase tracking-wide mb-1">
-          Formation Synergies
-          {preview.activeSynergies.length === 0 && (
-            <span className="ml-1 normal-case font-normal text-zinc-400">(none active)</span>
-          )}
-        </p>
-        {preview.activeSynergies.length > 0 && (
-          <ul className="flex flex-wrap gap-1">
+        <p className="mb-1.5 text-xs text-ink-2">Formation synergies</p>
+        {preview.activeSynergies.length > 0 ? (
+          <div className="flex flex-wrap gap-1">
             {preview.activeSynergies.map((s) => (
-              <li
-                key={s}
-                className="rounded bg-emerald-100 border border-emerald-300 px-2 py-0.5 text-xs font-medium text-emerald-800"
-              >
-                {s}
-              </li>
+              <Pill key={s} tone="cobalt">{s}</Pill>
             ))}
-          </ul>
+          </div>
+        ) : (
+          <p className="text-xs text-muted">None active</p>
         )}
       </div>
 
       {/* Per-card breakdown */}
       <div>
-        <p className="text-xs font-medium text-zinc-500 uppercase tracking-wide mb-1">Per-Card</p>
-        <ul className="flex flex-col gap-1">
+        <p className="mb-1.5 text-xs text-ink-2">Per card</p>
+        <ul className="flex flex-col gap-2" role="list">
           {input.cards.map((c, i) => {
             const sl = preview.staminaFlags[i];
             const oop = preview.oopFlags[i];
@@ -274,45 +266,37 @@ function SynergyPanel({ input }: SynergyPanelProps) {
             const hints = preview.perCardTraitHints[i];
             const def = PLAYER_BY_ID.get(c.playerId);
             return (
-              <li key={c.playerId} className="flex flex-wrap items-start gap-1 border-b border-zinc-100 pb-1">
-                <span className="font-medium text-zinc-700 min-w-[90px] text-xs truncate">
+              <li
+                key={c.playerId}
+                className="flex flex-wrap items-center gap-1 border-b border-line pb-1.5 last:border-0 last:pb-0"
+              >
+                <span className="min-w-[72px] flex-1 truncate text-xs font-medium text-ink">
                   {def?.name ?? c.playerId.slice(0, 8)}
                 </span>
 
-                {/* Stamina — color-blind-safe: icon + text + color */}
-                <span className={`text-[10px] flex items-center gap-0.5 ${staminaStyle(sl)}`} aria-label={`Stamina: ${sl}`}>
+                {/* Stamina — color-blind-safe: icon + text + tone */}
+                <Pill tone={staminaTone(sl)}>
                   <span aria-hidden>{staminaIcon(sl)}</span>
-                  {sl}
-                </span>
+                  <span aria-label={`Stamina: ${sl}`}>{sl}</span>
+                </Pill>
 
                 {/* Formation mult */}
                 {fm !== 1 && (
-                  <span
-                    className={[
-                      "text-[10px] rounded px-0.5 border",
-                      fm > 1
-                        ? "bg-emerald-50 border-emerald-300 text-emerald-800"
-                        : "bg-orange-50 border-orange-300 text-orange-800",
-                    ].join(" ")}
-                    aria-label={`Formation multiplier ${multLabel(fm)}`}
-                  >
+                  <Pill tone={fm > 1 ? "ok" : "warn"} aria-label={`Formation multiplier ${multLabel(fm)}`}>
                     {multLabel(fm)}
-                  </span>
+                  </Pill>
                 )}
 
-                {/* OOP — color-blind-safe: text + icon + orange */}
+                {/* OOP — color-blind-safe: text + icon + warn tone */}
                 {oop && (
-                  <span
-                    className="text-[10px] rounded px-0.5 bg-orange-100 border border-orange-300 text-orange-800 font-bold"
-                    aria-label="Out of position — scoring penalty applies"
-                  >
-                    ⚠ OOP
-                  </span>
+                  <Pill tone="warn" aria-label="Out of position — scoring penalty applies">
+                    OOP
+                  </Pill>
                 )}
 
                 {/* Trait hints */}
                 {hints.length > 0 && (
-                  <span className="text-[9px] text-zinc-400 flex-1">
+                  <span className="w-full text-[10px] text-muted">
                     boosts: {hints.join(", ")}
                   </span>
                 )}
@@ -321,7 +305,7 @@ function SynergyPanel({ input }: SynergyPanelProps) {
           })}
         </ul>
       </div>
-    </aside>
+    </Panel>
   );
 }
 
@@ -381,7 +365,7 @@ export default function BuilderPage() {
       return () => { cancelled = true; };
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [address], // setters are stable dispatch fns (useReducer guarantee)
+    [address],
   );
 
   // ── Fetch chip balances ────────────────────────────────────────────────────
@@ -403,7 +387,7 @@ export default function BuilderPage() {
       return () => { cancelled = true; };
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [address], // setChipBalances is stable dispatch
+    [address],
   );
 
   // ── Derived: controllable card set ────────────────────────────────────────
@@ -421,7 +405,6 @@ export default function BuilderPage() {
     const naturalPos = card ? (card.position as Position) : slotPos;
     const isOop = card ? naturalPos !== slotPos : false;
 
-    // Stamina band from card (preview will compute the canonical value)
     let staminaBand: "Fresh" | "Normal" | "Fatigued" = "Normal";
     if (card) {
       const s = card.stamina;
@@ -433,7 +416,7 @@ export default function BuilderPage() {
       card,
       isOop,
       staminaBand,
-      formationMult: 1,  // overridden below after previewLineup
+      formationMult: 1,
       traitHints: [],
     };
   });
@@ -463,7 +446,6 @@ export default function BuilderPage() {
       cards: previewCards,
     };
 
-    // Backfill formationMult into slotStates from previewLineup result
     const preview = previewLineup(previewInput);
     for (let i = 0; i < LINEUP_SIZE; i++) {
       slotStates[i].formationMult = preview.formationMultForCard[i];
@@ -491,8 +473,6 @@ export default function BuilderPage() {
     : { ok: false, errors: ["No wallet connected"] };
 
   // ── TxButton request ───────────────────────────────────────────────────────
-  // Arg order mirrors writes.ts commitLineup:
-  //   [BigInt(matchday), tokenIds, formation, captainIdx, viceIdx, chipId]
   const commitRequest: TxRequest = {
     address: ADDRESSES.GameRegistry,
     abi: ABIS.GameRegistry,
@@ -520,18 +500,14 @@ export default function BuilderPage() {
   }, [formation.slots]);
 
   // ── Keyboard-accessible placement ─────────────────────────────────────────
-  // Flow: (1) Select bench card (Enter → sets pendingCardId)
-  //       (2) Activate a slot (Enter → places card in slot)
   const handleSlotActivate = useCallback((slotIndex: number) => {
     if (state.pendingCardId) {
-      // Place pending card into this slot
       dispatch({ type: "PLACE_CARD", slotIndex, tokenId: state.pendingCardId });
       const def = PLAYER_BY_ID.get(state.pendingCardId as `0x${string}`);
       announce(
         `${def?.name ?? state.pendingCardId} placed in slot ${slotIndex + 1} (${formation.slots[slotIndex]}). Slot ${slotIndex + 1} now filled.`,
       );
     } else if (state.slotTokenIds[slotIndex]) {
-      // Slot has a card — remove it (or let user swap by selecting bench card next)
       dispatch({ type: "REMOVE_CARD", slotIndex });
       announce(`Slot ${slotIndex + 1} cleared.`);
     } else {
@@ -548,7 +524,6 @@ export default function BuilderPage() {
 
   function handleCardSelect(tokenId: string) {
     if (state.pendingCardId === tokenId) {
-      // Deselect
       dispatch({ type: "SET_PENDING", tokenId: null });
       announce("Card deselected.");
     } else {
@@ -562,6 +537,7 @@ export default function BuilderPage() {
 
   // ── Placed token set (to dim bench cards) ─────────────────────────────────
   const placedSet = new Set(state.slotTokenIds.filter(Boolean));
+  const filledCount = state.slotTokenIds.filter(Boolean).length;
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
@@ -575,61 +551,94 @@ export default function BuilderPage() {
         role="status"
       />
 
-      <header>
-        <h1 className="text-2xl font-bold">Lineup Builder</h1>
-        <p className="text-sm opacity-70">
-          Build your 11-player squad, pick your captain, chip, and commit for a matchday.
-        </p>
-      </header>
+      {/* Page heading */}
+      <SectionHeading
+        kicker="Lineup builder"
+        title="Build your XI"
+        action={
+          <Link href="/play" className={buttonClasses("ghost", "sm")}>
+            Back to overview
+          </Link>
+        }
+      />
 
+      {/* No wallet notice */}
       {!address && (
-        <p className="rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          Connect your wallet to build a lineup.
-        </p>
+        <Panel variant="outline" className="px-4 py-3">
+          <p className="text-sm text-ink-2">Connect your wallet to build a lineup.</p>
+        </Panel>
       )}
 
       {/* Two-column layout on wider screens */}
       <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
+
         {/* ── Left column: controls + pitch ──────────────────────────────── */}
-        <div className="flex flex-col gap-5 flex-1">
+        <div className="flex min-w-0 flex-1 flex-col gap-5">
 
-          {/* Matchday + Formation row */}
-          <section className="flex flex-wrap items-center gap-4">
-            <div className="flex items-center gap-2">
-              <label className="text-sm font-medium" htmlFor="matchday-select">Matchday</label>
-              <select
-                id="matchday-select"
-                className="rounded border border-zinc-300 bg-white px-3 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-400"
-                value={state.matchday}
-                onChange={(e) => dispatch({ type: "SET_MATCHDAY", value: Number(e.target.value) })}
-              >
-                {[1, 2, 3, 4, 5, 6, 7].map((d) => (
-                  <option key={d} value={d}>Matchday {d}</option>
-                ))}
-              </select>
-            </div>
+          {/* Controls bar: matchday, formation, squad readiness */}
+          <Panel variant="paper" className="p-4">
+            <div className="flex flex-wrap items-end gap-4">
+              <div className="flex flex-col gap-1.5">
+                <label
+                  className="text-xs font-semibold uppercase tracking-[0.14em] text-muted"
+                  htmlFor="matchday-select"
+                >
+                  Matchday
+                </label>
+                <select
+                  id="matchday-select"
+                  className={FORM_CONTROL}
+                  value={state.matchday}
+                  onChange={(e) => dispatch({ type: "SET_MATCHDAY", value: Number(e.target.value) })}
+                >
+                  {[1, 2, 3, 4, 5, 6, 7].map((d) => (
+                    <option key={d} value={d}>Matchday {d}</option>
+                  ))}
+                </select>
+              </div>
 
-            <div className="flex items-center gap-2">
-              <label className="text-sm font-medium" htmlFor="formation-select">Formation</label>
-              <select
-                id="formation-select"
-                className="rounded border border-zinc-300 bg-white px-3 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-400"
-                value={state.formationIndex}
-                onChange={(e) => dispatch({ type: "SET_FORMATION", index: Number(e.target.value) })}
-              >
-                {FORMATIONS.map((f, i) => (
-                  <option key={f.name} value={i}>{f.name}</option>
-                ))}
-              </select>
+              <div className="flex flex-col gap-1.5">
+                <label
+                  className="text-xs font-semibold uppercase tracking-[0.14em] text-muted"
+                  htmlFor="formation-select"
+                >
+                  Formation
+                </label>
+                <select
+                  id="formation-select"
+                  className={FORM_CONTROL}
+                  value={state.formationIndex}
+                  onChange={(e) => dispatch({ type: "SET_FORMATION", index: Number(e.target.value) })}
+                >
+                  {FORMATIONS.map((f, i) => (
+                    <option key={f.name} value={i}>{f.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="ml-auto flex flex-col items-end gap-1.5">
+                <span className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+                  Squad
+                </span>
+                <Pill tone={filledCount === LINEUP_SIZE ? "ok" : filledCount > 0 ? "warn" : "neutral"}>
+                  {filledCount}/{LINEUP_SIZE} placed
+                </Pill>
+              </div>
             </div>
-          </section>
+          </Panel>
 
           {/* Keyboard instructions */}
-          <p className="text-xs text-zinc-500 bg-zinc-50 border border-zinc-200 rounded px-3 py-2">
-            <strong>Keyboard:</strong> Tab to a card below, press Enter to select it (it glows).
-            Then Tab to a slot on the pitch and press Enter to place it. Press Delete on a slot to clear it.
-            Or drag cards directly onto slots.
-          </p>
+          <Panel variant="sunken" className="px-4 py-2.5">
+            <p className="text-xs text-ink-2">
+              <span className="font-semibold text-ink">Keyboard:</span> Tab to a card, press{" "}
+              <kbd className="rounded-xs border border-line-2 bg-paper-2 px-1 py-0.5 font-mono text-[10px]">Enter</kbd>{" "}
+              to select it. Tab to a slot, press{" "}
+              <kbd className="rounded-xs border border-line-2 bg-paper-2 px-1 py-0.5 font-mono text-[10px]">Enter</kbd>{" "}
+              to place. Press{" "}
+              <kbd className="rounded-xs border border-line-2 bg-paper-2 px-1 py-0.5 font-mono text-[10px]">Delete</kbd>{" "}
+              on a slot to clear it. Or drag cards directly onto slots.
+            </p>
+          </Panel>
 
           {/* Pitch */}
           <section aria-label="Football pitch">
@@ -646,54 +655,71 @@ export default function BuilderPage() {
 
           {/* Captain + Vice (only when all slots filled) */}
           {allFilled && (
-            <section className="flex flex-wrap gap-4" aria-label="Captain and vice-captain">
-              <div className="flex items-center gap-2">
-                <label className="text-sm font-medium w-28" htmlFor="captain-select">Captain (C)</label>
-                <select
-                  id="captain-select"
-                  className="rounded border border-zinc-300 bg-white px-3 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-400"
-                  value={state.captainIdx}
-                  onChange={(e) => dispatch({ type: "SET_CAPTAIN", idx: Number(e.target.value) })}
-                >
-                  {state.slotTokenIds.map((id, i) => {
-                    const pc = cardByTokenId.get(id);
-                    const def = pc ? PLAYER_BY_ID.get(pc.playerId as `0x${string}`) : null;
-                    return (
-                      <option key={i} value={i} disabled={i === state.viceIdx}>
-                        Slot {i + 1} — {formation.slots[i]} — {def?.name ?? `#${id.slice(-6)}`}
-                      </option>
-                    );
-                  })}
-                </select>
-              </div>
+            <Panel variant="paper" className="p-4" aria-label="Captain and vice-captain">
+              <h2 className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+                Armband
+              </h2>
+              <div className="flex flex-wrap gap-4">
+                <div className="flex flex-1 flex-col gap-1.5">
+                  <label
+                    className="text-xs font-semibold uppercase tracking-[0.14em] text-muted"
+                    htmlFor="captain-select"
+                  >
+                    Captain (C)
+                  </label>
+                  <select
+                    id="captain-select"
+                    className={FORM_CONTROL}
+                    value={state.captainIdx}
+                    onChange={(e) => dispatch({ type: "SET_CAPTAIN", idx: Number(e.target.value) })}
+                  >
+                    {state.slotTokenIds.map((id, i) => {
+                      const pc = cardByTokenId.get(id);
+                      const def = pc ? PLAYER_BY_ID.get(pc.playerId as `0x${string}`) : null;
+                      return (
+                        <option key={i} value={i} disabled={i === state.viceIdx}>
+                          Slot {i + 1} — {formation.slots[i]} — {def?.name ?? `#${id.slice(-6)}`}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
 
-              <div className="flex items-center gap-2">
-                <label className="text-sm font-medium w-28" htmlFor="vice-select">Vice (V)</label>
-                <select
-                  id="vice-select"
-                  className="rounded border border-zinc-300 bg-white px-3 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-400"
-                  value={state.viceIdx}
-                  onChange={(e) => dispatch({ type: "SET_VICE", idx: Number(e.target.value) })}
-                >
-                  {state.slotTokenIds.map((id, i) => {
-                    const pc = cardByTokenId.get(id);
-                    const def = pc ? PLAYER_BY_ID.get(pc.playerId as `0x${string}`) : null;
-                    return (
-                      <option key={i} value={i} disabled={i === state.captainIdx}>
-                        Slot {i + 1} — {formation.slots[i]} — {def?.name ?? `#${id.slice(-6)}`}
-                      </option>
-                    );
-                  })}
-                </select>
+                <div className="flex flex-1 flex-col gap-1.5">
+                  <label
+                    className="text-xs font-semibold uppercase tracking-[0.14em] text-muted"
+                    htmlFor="vice-select"
+                  >
+                    Vice (V)
+                  </label>
+                  <select
+                    id="vice-select"
+                    className={FORM_CONTROL}
+                    value={state.viceIdx}
+                    onChange={(e) => dispatch({ type: "SET_VICE", idx: Number(e.target.value) })}
+                  >
+                    {state.slotTokenIds.map((id, i) => {
+                      const pc = cardByTokenId.get(id);
+                      const def = pc ? PLAYER_BY_ID.get(pc.playerId as `0x${string}`) : null;
+                      return (
+                        <option key={i} value={i} disabled={i === state.captainIdx}>
+                          Slot {i + 1} — {formation.slots[i]} — {def?.name ?? `#${id.slice(-6)}`}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
               </div>
-            </section>
+            </Panel>
           )}
 
           {/* Chip selector */}
-          <section aria-label="Chip selection" className="flex flex-col gap-2">
+          <Panel variant="paper" className="p-4" aria-label="Chip selection">
             <fieldset>
-              <legend className="text-sm font-medium mb-1">Chip</legend>
-              <div className="flex flex-wrap gap-2">
+              <legend className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+                Chip
+              </legend>
+              <div className="flex flex-wrap gap-2" role="radiogroup">
                 {CHIP_OPTIONS.map((opt) => {
                   const bal: bigint | undefined = opt.value === ChipId.None ? undefined : chipBalances[opt.value];
                   const hasChip = opt.value === ChipId.None || (bal !== undefined && bal > 0n);
@@ -707,50 +733,49 @@ export default function BuilderPage() {
                       disabled={!hasChip}
                       onClick={() => dispatch({ type: "SET_CHIP", chipId: opt.value })}
                       title={opt.description + (bal !== undefined ? ` (balance: ${bal})` : "")}
-                      className={[
-                        "rounded border px-3 py-1 text-xs font-medium transition-colors",
-                        "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900",
+                      className={cx(
+                        "rounded-sm border px-3 h-8 text-xs font-semibold transition-[background-color,border-color,color] duration-150 [transition-timing-function:var(--ease-out-expo)]",
+                        "focus-visible:outline-2 focus-visible:outline-cobalt",
                         isSelected
-                          ? "border-zinc-900 bg-zinc-900 text-white"
-                          : "border-zinc-300 bg-white text-zinc-700 hover:border-zinc-500",
-                        !hasChip ? "opacity-40 cursor-not-allowed" : "cursor-pointer",
-                      ].join(" ")}
+                          ? "border-cobalt bg-cobalt text-on-panel"
+                          : "border-line-2 bg-paper-2 text-ink-2 hover:border-ink-2 hover:text-ink",
+                        !hasChip ? "cursor-not-allowed opacity-40" : "cursor-pointer",
+                      )}
                     >
                       {opt.label}
                       {bal !== undefined && (
-                        <span className="ml-1 text-[10px] opacity-60">×{bal.toString()}</span>
+                        <span className="ml-1 opacity-60">×{bal.toString()}</span>
                       )}
                     </button>
                   );
                 })}
               </div>
-              {/* Stamina note for Wildcard / FreeHit */}
               {(state.chipId === ChipId.Wildcard || state.chipId === ChipId.FreeHit) && (
-                <p className="mt-1 text-xs text-zinc-500">
-                  Note: {state.chipId === ChipId.Wildcard ? "Wildcard" : "Free Hit"} resets stamina to Normal for all cards.
+                <p className="mt-2 text-xs text-muted">
+                  {state.chipId === ChipId.Wildcard ? "Wildcard" : "Free Hit"} resets stamina to Normal for all cards.
                 </p>
               )}
             </fieldset>
-          </section>
+          </Panel>
 
           {/* Validation errors */}
           {allFilled && !validation.ok && (
-            <section
-              aria-label="Lineup validation errors"
-              className="rounded border border-red-200 bg-red-50 p-3"
-            >
-              <p className="mb-1 text-xs font-semibold text-red-700">Lineup issues:</p>
-              <ul className="list-inside list-disc space-y-0.5">
-                {validation.errors.map((err, i) => (
-                  <li key={i} className="text-xs text-red-600">{err}</li>
-                ))}
-              </ul>
+            <section aria-label="Lineup validation errors" className="flex flex-col gap-1.5">
+              {validation.errors.map((err, i) => (
+                <Pill key={i} tone="danger" className="w-fit px-3 py-1.5 text-xs">
+                  {err}
+                </Pill>
+              ))}
             </section>
           )}
 
-          {/* Commit button */}
+          {/* Commit section */}
           {!loadingCards && portfolioCards.length >= LINEUP_SIZE && allFilled && validation.ok && address && (
-            <section aria-label="Commit lineup">
+            <Panel variant="ink" className="p-5" aria-label="Commit lineup">
+              <div className="mb-3 flex items-center justify-between">
+                <p className="text-sm font-semibold text-on-panel">Ready to commit</p>
+                <Pill tone="cobalt">Matchday {state.matchday}</Pill>
+              </div>
               <TxButton
                 request={commitRequest}
                 label={`Commit Lineup — Matchday ${state.matchday}`}
@@ -760,11 +785,11 @@ export default function BuilderPage() {
                   console.info("LineupCommitted tx:", hash);
                 }}
               />
-            </section>
+            </Panel>
           )}
 
           {!address && allFilled && (
-            <p className="text-sm text-zinc-500">Connect a wallet to commit this lineup.</p>
+            <p className="text-sm text-muted">Connect a wallet to commit this lineup.</p>
           )}
         </div>
 
@@ -773,36 +798,50 @@ export default function BuilderPage() {
 
           {/* Bench cards */}
           <section aria-label="Your cards (bench)">
-            <h2 className="text-sm font-semibold mb-2">
-              Your Cards
-              <span className="ml-1 text-xs font-normal text-zinc-400">
-                ({portfolioCards.length} controllable)
-              </span>
-            </h2>
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+                Your cards
+              </h2>
+              {!loadingCards && (
+                <Pill tone="neutral">{portfolioCards.length} controllable</Pill>
+              )}
+            </div>
 
-            {loadingCards && <p className="text-xs text-zinc-400">Loading cards…</p>}
-            {cardsError && (
-              <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
-                Could not load cards: {cardsError}
-              </p>
-            )}
-
-            {!loadingCards && portfolioCards.length === 0 && address && (
-              <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2">
-                <p className="text-xs text-amber-800">
-                  No controllable cards found. You need {LINEUP_SIZE} to commit a lineup.
-                </p>
-                <Link
-                  href="/rentals"
-                  className="mt-1 inline-block text-xs font-medium text-amber-900 underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1"
-                >
-                  Rent cards →
-                </Link>
+            {loadingCards && (
+              <div className="flex flex-col gap-2">
+                {Array.from({ length: 5 }, (_, i) => (
+                  <Skeleton key={i} className="h-12 w-full" />
+                ))}
               </div>
             )}
 
+            {cardsError && (
+              <Pill tone="danger" className="px-3 py-2 text-xs w-full rounded-sm">
+                Could not load cards: {cardsError}
+              </Pill>
+            )}
+
+            {!loadingCards && portfolioCards.length === 0 && address && (
+              <EmptyState
+                icon="🃏"
+                title="No controllable cards"
+                hint={`You need ${LINEUP_SIZE} cards to commit a lineup.`}
+                action={
+                  <Link
+                    href="/rentals"
+                    className={buttonClasses("secondary", "sm")}
+                  >
+                    Rent cards
+                  </Link>
+                }
+              />
+            )}
+
             {portfolioCards.length > 0 && (
-              <ul className="flex flex-col gap-1 max-h-[420px] overflow-y-auto pr-1" role="list">
+              <ul
+                className="flex max-h-[480px] flex-col gap-1 overflow-y-auto pr-0.5"
+                role="list"
+              >
                 {portfolioCards.map((pc) => {
                   const card = resolveCard(pc);
                   return (
@@ -823,7 +862,7 @@ export default function BuilderPage() {
             )}
           </section>
 
-          {/* Synergy panel (driven entirely by previewLineup) */}
+          {/* Synergy panel */}
           <SynergyPanel input={previewInput} />
         </div>
       </div>
@@ -832,8 +871,7 @@ export default function BuilderPage() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Tiny useState-like wrapper backed by useReducer (avoids state updates during
-// render and keeps exhaustive-deps lint happy in the main component).
+// Tiny useState-like wrapper backed by useReducer
 // ─────────────────────────────────────────────────────────────────────────────
 
 function useReducerShim<T>(initial: T): [T, (v: T) => void] {

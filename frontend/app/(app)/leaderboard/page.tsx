@@ -29,6 +29,16 @@ import { TxButton } from "@/components/TxButton";
 import { ADDRESSES, ABIS } from "@/lib/contracts";
 import { fmtUsdc } from "@/lib/business/format";
 import { publicClient } from "@/lib/clients";
+import {
+  Button,
+  EmptyState,
+  Panel,
+  Pill,
+  SectionHeading,
+  Skeleton,
+  Stat,
+  cx,
+} from "@/components/ui";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -53,11 +63,12 @@ function shortAddr(addr: string): string {
   return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
 }
 
-function medalEmoji(rank: number): string {
-  if (rank === 1) return "🥇";
-  if (rank === 2) return "🥈";
-  if (rank === 3) return "🥉";
-  return "";
+/** Rank 1-3 accent: gold / violet / cobalt. Returns Tailwind text + bg classes. */
+function podiumStyle(rank: number): { cell: string; rankText: string } {
+  if (rank === 1) return { cell: "bg-gold/10", rankText: "text-[color:var(--gold)]" };
+  if (rank === 2) return { cell: "bg-violet/10", rankText: "text-violet" };
+  if (rank === 3) return { cell: "bg-cobalt/8", rankText: "text-cobalt-ink" };
+  return { cell: "", rankText: "text-muted" };
 }
 
 // ── Page component ────────────────────────────────────────────────────────────
@@ -167,194 +178,336 @@ export default function LeaderboardPage() {
         } as const)
       : null;
 
-  // ── Render ────────────────────────────────────────────────────────────────
+  // ── Loading skeleton ──────────────────────────────────────────────────────
   if (loading) {
     return (
-      <main className="mx-auto max-w-3xl px-4 py-10">
-        <h1 className="text-2xl font-bold text-pitch-green mb-6">Season Leaderboard</h1>
-        <p className="text-sm text-zinc-500">Loading…</p>
+      <main className="flex flex-col gap-8 py-2">
+        <SectionHeading
+          kicker="2026 World Cup"
+          title="Season Table"
+        />
+        <Panel variant="paper" className="overflow-hidden">
+          <div className="flex flex-col gap-0 divide-y divide-line">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <div key={i} className="flex items-center gap-4 px-4 py-3">
+                <Skeleton className="h-4 w-6 shrink-0" />
+                <Skeleton className="h-4 w-32" />
+                <Skeleton className="ml-auto h-4 w-14" />
+                <Skeleton className="h-4 w-16" />
+              </div>
+            ))}
+          </div>
+        </Panel>
       </main>
     );
   }
 
+  // ── Error state ───────────────────────────────────────────────────────────
   if (error) {
     return (
-      <main className="mx-auto max-w-3xl px-4 py-10">
-        <h1 className="text-2xl font-bold text-pitch-green mb-6">Season Leaderboard</h1>
-        <p className="text-sm text-red-600">Error: {error}</p>
+      <main className="flex flex-col gap-8 py-2">
+        <SectionHeading
+          kicker="2026 World Cup"
+          title="Season Table"
+        />
+        <EmptyState
+          icon="⚠"
+          title="Could not load standings"
+          hint={`Network or API error: ${error}`}
+          action={
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => window.location.reload()}
+            >
+              Retry
+            </Button>
+          }
+        />
       </main>
     );
   }
 
+  // ── Main render ───────────────────────────────────────────────────────────
   return (
-    <main className="mx-auto max-w-3xl px-4 py-10">
-      <h1 className="text-2xl font-bold text-pitch-green mb-2">Season Leaderboard</h1>
-      <p className="text-sm text-zinc-500 mb-6">
-        Cumulative fantasy points across all Cup matchdays. Top 100 wallets
-        share the 2% season prize pool.
-      </p>
+    <main className="flex flex-col gap-8 py-2">
+      {/* ── Header ──────────────────────────────────────────────────────── */}
+      <SectionHeading
+        kicker="2026 World Cup"
+        title="Season Table"
+        action={
+          isFinalized === true ? (
+            <Pill tone="ok">Finalized</Pill>
+          ) : isFinalized === false ? (
+            <Pill tone="warn">In progress</Pill>
+          ) : null
+        }
+      />
 
-      {/* ── Season status banner ─────────────────────────────────────────── */}
+      {/* ── Season status banners ────────────────────────────────────────── */}
       {isFinalized === false && (
-        <div
-          role="status"
-          className="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800"
-        >
-          <strong>Season in progress</strong> — The season has not been finalized
-          on-chain yet. Standings shown are the latest computed projection. Claims
-          will be available once the oracle posts the final root.
-        </div>
+        <Panel variant="outline" className="px-4 py-3">
+          <div role="status">
+            <p className="text-sm text-ink-2">
+              <span className="font-semibold text-ink">Season in progress.</span>{" "}
+              Standings shown are the latest computed projection. Claims will be
+              available once the oracle posts the final Merkle root.
+            </p>
+          </div>
+        </Panel>
       )}
       {isFinalized === true && (
-        <div
-          role="status"
-          className="mb-6 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800"
-        >
-          <strong>Season finalized!</strong> Eligible wallets can now claim their
-          prize below.
-        </div>
+        <Panel variant="outline" className="border-ok/40 bg-ok/6 px-4 py-3">
+          <div role="status">
+            <p className="text-sm text-ink-2">
+              <span className="font-semibold text-ink">Season finalized.</span>{" "}
+              Eligible wallets can claim their USDC prize below.
+            </p>
+          </div>
+        </Panel>
       )}
 
-      {/* ── My season result card ────────────────────────────────────────── */}
+      {/* ── My season result ─────────────────────────────────────────────── */}
       {connectedAddress && walletEntry && (
-        <section
-          aria-labelledby="my-season-heading"
-          className="mb-8 rounded-xl border-2 border-gold bg-white p-5 shadow"
-        >
-          <h2 id="my-season-heading" className="text-lg font-semibold mb-3">
-            My Season Result
+        <section aria-labelledby="my-season-heading">
+          <h2
+            id="my-season-heading"
+            className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-muted"
+          >
+            Your result
           </h2>
-          <dl className="grid grid-cols-3 gap-4 text-center mb-4">
-            <div>
-              <dt className="text-xs text-zinc-400 uppercase tracking-wide">Rank</dt>
-              <dd className="text-2xl font-bold">
-                {walletEntry.rank !== null ? `#${walletEntry.rank}` : "—"}
-                {walletEntry.rank !== null && walletEntry.rank <= 3
-                  ? ` ${medalEmoji(walletEntry.rank)}`
-                  : ""}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-xs text-zinc-400 uppercase tracking-wide">Score</dt>
-              <dd className="text-2xl font-bold">{walletEntry.score.toFixed(1)}</dd>
-            </div>
-            <div>
-              <dt className="text-xs text-zinc-400 uppercase tracking-wide">Prize</dt>
-              <dd className="text-2xl font-bold">
-                {BigInt(walletEntry.amount ?? "0") > 0n
-                  ? `${fmtUsdc(BigInt(walletEntry.amount))} USDC`
-                  : "—"}
-              </dd>
-            </div>
-          </dl>
+          <Panel variant="ink" className="p-5">
+            <div className="flex flex-wrap items-start justify-between gap-6">
+              {/* stats row */}
+              <dl className="flex flex-wrap gap-8">
+                <div>
+                  <Stat
+                    tone="on-panel"
+                    value={
+                      walletEntry.rank !== null ? (
+                        <span className="flex items-baseline gap-2">
+                          <span>#{walletEntry.rank}</span>
+                          {walletEntry.rank <= 3 && (
+                            <Pill
+                              tone={
+                                walletEntry.rank === 1
+                                  ? "gold"
+                                  : walletEntry.rank === 2
+                                    ? "violet"
+                                    : "cobalt"
+                              }
+                              className="mb-1 self-end text-[10px]"
+                            >
+                              Top {walletEntry.rank}
+                            </Pill>
+                          )}
+                        </span>
+                      ) : (
+                        "—"
+                      )
+                    }
+                    label="Rank"
+                  />
+                </div>
+                <div>
+                  <Stat
+                    tone="on-panel"
+                    value={walletEntry.score.toFixed(1)}
+                    label="Season pts"
+                  />
+                </div>
+                <div>
+                  <Stat
+                    tone="on-panel"
+                    value={
+                      BigInt(walletEntry.amount ?? "0") > 0n
+                        ? `${fmtUsdc(BigInt(walletEntry.amount))} USDC`
+                        : "—"
+                    }
+                    label="Prize"
+                  />
+                </div>
+              </dl>
 
-          {/* Claim button — gated on isFinalized + amount > 0 + claimRequest */}
-          {isFinalized && claimRequest && (
-            <div>
-              <p className="text-xs text-zinc-500 mb-2">
-                Claim your season prize via SeasonLeaderboard.claim(amount, proof):
-              </p>
-              <TxButton
-                request={claimRequest}
-                label="Claim Season Prize"
-                onSuccess={(hash) => {
-                  // Optimistic UI: clear amount so the button disappears
-                  setWalletEntry((prev) =>
-                    prev ? { ...prev, amount: "0" } : prev,
-                  );
-                  console.info("[leaderboard] claimSeason mined:", hash);
-                }}
-              />
+              {/* claim / status */}
+              <div className="flex flex-col items-end gap-2">
+                {isFinalized && claimRequest && (
+                  <TxButton
+                    request={claimRequest}
+                    label="Claim season prize"
+                    onSuccess={(hash) => {
+                      // Optimistic UI: clear amount so the button disappears
+                      setWalletEntry((prev) =>
+                        prev ? { ...prev, amount: "0" } : prev,
+                      );
+                      console.info("[leaderboard] claimSeason mined:", hash);
+                    }}
+                  />
+                )}
+                {isFinalized &&
+                  BigInt(walletEntry.amount ?? "0") === 0n &&
+                  walletEntry.rank !== null && (
+                    <p className="text-xs text-on-panel-muted">
+                      Rank outside the top-100 paid positions — no prize to claim.
+                    </p>
+                  )}
+                {!isFinalized && BigInt(walletEntry.amount ?? "0") > 0n && (
+                  <p className="text-xs text-on-panel-muted">
+                    Claiming opens once the oracle posts the final root.
+                  </p>
+                )}
+              </div>
             </div>
-          )}
-
-          {isFinalized && BigInt(walletEntry.amount ?? "0") === 0n && walletEntry.rank !== null && (
-            <p className="text-xs text-zinc-400 mt-2">
-              Your rank is outside the top-100 paid positions — no prize to claim.
-            </p>
-          )}
-
-          {!isFinalized && BigInt(walletEntry.amount ?? "0") > 0n && (
-            <p className="text-xs text-amber-700 mt-2">
-              Season must be finalized on-chain before claiming.
-            </p>
-          )}
+          </Panel>
         </section>
       )}
 
       {!connectedAddress && (
-        <p className="mb-6 text-sm text-zinc-500">
-          Connect your wallet to see your season rank and claim prize.
+        <p className="text-sm text-muted">
+          Connect your wallet to see your season rank and claim your prize.
         </p>
       )}
 
       {/* ── Standings table ──────────────────────────────────────────────── */}
-      {standings.length === 0 ? (
-        <div className="rounded-lg border border-zinc-100 bg-zinc-50 p-6 text-center text-sm text-zinc-400">
-          No season data yet — standings will appear once matchdays have been scored
-          and aggregated by the oracle.
-        </div>
-      ) : (
-        <section aria-labelledby="standings-heading">
-          <h2 id="standings-heading" className="text-base font-semibold mb-3">
-            Top {standings.length} Season Standings
+      <section aria-labelledby="standings-heading">
+        <div className="mb-3 flex items-baseline justify-between gap-4">
+          <h2
+            id="standings-heading"
+            className="text-xs font-semibold uppercase tracking-[0.18em] text-muted"
+          >
+            Top {standings.length > 0 ? standings.length : 50} managers
           </h2>
-          <div className="overflow-x-auto rounded-xl border border-zinc-200 shadow-sm">
-            <table className="w-full text-sm" aria-label="Season standings">
-              <thead>
-                <tr className="border-b border-zinc-100 bg-zinc-50 text-xs text-zinc-500 uppercase tracking-wide">
-                  <th className="py-2 px-4 text-left w-12">Rank</th>
-                  <th className="py-2 px-4 text-left">Manager</th>
-                  <th className="py-2 px-4 text-right">Score</th>
-                  <th className="py-2 px-4 text-right">Prize (USDC)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {standings.map((row) => {
-                  const isMe =
-                    connectedAddress &&
-                    row.wallet.toLowerCase() === connectedAddress.toLowerCase();
-                  return (
-                    <tr
-                      key={row.wallet}
-                      className={`border-b border-zinc-50 last:border-0 transition-colors ${
-                        isMe
-                          ? "bg-gold/10 font-semibold"
-                          : "hover:bg-zinc-50"
-                      }`}
+          {standings.length > 0 && (
+            <p className="text-xs text-muted">Ranks 101+ are not paid</p>
+          )}
+        </div>
+
+        {standings.length === 0 ? (
+          <EmptyState
+            icon="⚽"
+            title="No standings yet"
+            hint="The World Cup kicks off June 11, 2026. Standings will appear once matchdays have been scored and aggregated by the oracle."
+          />
+        ) : (
+          <Panel variant="paper" className="overflow-hidden p-0">
+            <div className="overflow-x-auto">
+              <table
+                className="w-full text-sm"
+                aria-label="Season standings"
+              >
+                <thead>
+                  <tr className="border-b border-line-2 bg-paper-3">
+                    <th
+                      scope="col"
+                      className="py-2.5 pl-4 pr-2 text-left text-[11px] font-semibold uppercase tracking-[0.14em] text-muted"
                     >
-                      <td className="py-2.5 px-4">
-                        <span className="font-mono">
-                          {row.rank <= 3 ? medalEmoji(row.rank) : `#${row.rank}`}
-                        </span>
-                      </td>
-                      <td className="py-2.5 px-4 font-mono text-xs">
-                        {shortAddr(row.wallet)}
-                        {isMe && (
-                          <span className="ml-2 rounded bg-pitch-green/10 px-1.5 py-0.5 text-[10px] text-pitch-green font-semibold">
-                            you
-                          </span>
+                      Rank
+                    </th>
+                    <th
+                      scope="col"
+                      className="py-2.5 px-3 text-left text-[11px] font-semibold uppercase tracking-[0.14em] text-muted"
+                    >
+                      Manager
+                    </th>
+                    <th
+                      scope="col"
+                      className="py-2.5 px-3 text-right text-[11px] font-semibold uppercase tracking-[0.14em] text-muted"
+                    >
+                      Points
+                    </th>
+                    <th
+                      scope="col"
+                      className="py-2.5 pl-3 pr-4 text-right text-[11px] font-semibold uppercase tracking-[0.14em] text-muted"
+                    >
+                      Prize (USDC)
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-line">
+                  {standings.map((row) => {
+                    const isMe =
+                      connectedAddress &&
+                      row.wallet.toLowerCase() ===
+                        connectedAddress.toLowerCase();
+                    const { cell, rankText } = podiumStyle(row.rank);
+
+                    return (
+                      <tr
+                        key={row.wallet}
+                        className={cx(
+                          "transition-colors duration-100",
+                          isMe
+                            ? "bg-cobalt/8 font-semibold"
+                            : row.rank <= 3
+                              ? cell
+                              : "hover:bg-paper-3",
+                          // podium rows get their cell bg unless it's the current user
+                          isMe ? "" : cell,
                         )}
-                      </td>
-                      <td className="py-2.5 px-4 text-right tabular-nums">
-                        {row.score.toFixed(1)}
-                      </td>
-                      <td className="py-2.5 px-4 text-right tabular-nums">
-                        {BigInt(row.amount) > 0n
-                          ? fmtUsdc(BigInt(row.amount))
-                          : "—"}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-          <p className="mt-2 text-xs text-zinc-400">
-            Showing top {standings.length} managers. Ranks 101+ are not paid.
-          </p>
-        </section>
-      )}
+                        aria-current={isMe ? "true" : undefined}
+                      >
+                        {/* Rank */}
+                        <td className="py-2.5 pl-4 pr-2 tabular-nums">
+                          <span
+                            className={cx(
+                              "font-mono text-sm font-semibold",
+                              rankText,
+                            )}
+                          >
+                            {row.rank <= 3 ? (
+                              <span
+                                aria-label={`Rank ${row.rank}`}
+                                className="display text-base"
+                              >
+                                {row.rank}
+                              </span>
+                            ) : (
+                              <span className="text-muted">#{row.rank}</span>
+                            )}
+                          </span>
+                        </td>
+
+                        {/* Manager address */}
+                        <td className="py-2.5 px-3">
+                          <span className="flex items-center gap-2">
+                            <span
+                              className="font-mono text-xs text-ink-2"
+                              title={row.wallet}
+                            >
+                              {shortAddr(row.wallet)}
+                            </span>
+                            {isMe && (
+                              <Pill tone="cobalt" className="text-[10px]">
+                                you
+                              </Pill>
+                            )}
+                          </span>
+                        </td>
+
+                        {/* Score */}
+                        <td className="py-2.5 px-3 text-right font-mono tabular-nums text-ink">
+                          {row.score.toFixed(1)}
+                        </td>
+
+                        {/* Prize */}
+                        <td className="py-2.5 pl-3 pr-4 text-right font-mono tabular-nums">
+                          {BigInt(row.amount) > 0n ? (
+                            <span className="font-semibold text-ink">
+                              {fmtUsdc(BigInt(row.amount))}
+                            </span>
+                          ) : (
+                            <span className="text-muted">—</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </Panel>
+        )}
+      </section>
     </main>
   );
 }

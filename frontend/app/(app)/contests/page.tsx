@@ -8,6 +8,18 @@ import { ADDRESSES, ABIS } from "@/lib/contracts";
 import { fmtUsdc } from "@/lib/business/format";
 import { TIER_NAME } from "@/lib/types";
 import { Tier } from "@/lib/types";
+import {
+  Panel,
+  Pill,
+  Stat,
+  SectionHeading,
+  EmptyState,
+  Skeleton,
+  TierBadge,
+  buttonClasses,
+  cx,
+} from "@/components/ui";
+import type { TierId } from "@/components/ui";
 
 // ── Geofence ─────────────────────────────────────────────────────────────────
 
@@ -41,6 +53,18 @@ interface ContestRow {
   entrants: number;
 }
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+/** True when the contest has a high enough prize pool to warrant ink-panel marquee treatment. */
+function isMarqueePaid(contest: ContestRow): boolean {
+  return BigInt(contest.entryFee) > 0n && BigInt(contest.pool) >= 10_000_000n; // >= $10 USDC
+}
+
+/** Short hex suffix used as a legible contest identifier. */
+function contestShort(id: string): string {
+  return id.slice(-6).toUpperCase();
+}
+
 // ── Module-scope sub-components ───────────────────────────────────────────────
 
 interface ContestCardProps {
@@ -49,23 +73,95 @@ interface ContestCardProps {
   geo: GeoCookie | null;
 }
 
-function ContestCard({ contest, address, geo }: ContestCardProps) {
-  const entryFee = BigInt(contest.entryFee);
+// ── Free contest card ─────────────────────────────────────────────────────────
+
+function FreeContestCard({ contest, address, geo: _geo }: ContestCardProps) {
   const pool = BigInt(contest.pool);
-  const isFree = entryFee === 0n;
-  const minTierLabel = TIER_NAME[contest.minTier as Tier] ?? `Tier ${contest.minTier}`;
   const contestIdBigInt = BigInt(contest.contestId);
 
-  const isPaid = !isFree;
-  const geoBlocked = isPaid && geo != null && geo.paid !== "allow";
+  const enterRequest = {
+    address: ADDRESSES.ContestEscrow,
+    abi: ABIS.ContestEscrow,
+    functionName: "enter",
+    args: [contestIdBigInt] as const,
+  } as const;
+
+  const tierAsId = (contest.minTier <= 3 ? contest.minTier : 0) as TierId;
+
+  return (
+    <Panel
+      variant="paper"
+      className="flex flex-col gap-5 p-5 transition-[transform,box-shadow] duration-200 [transition-timing-function:var(--ease-out-expo)] hover:-translate-y-0.5 hover:shadow-lift"
+    >
+      {/* Header row */}
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-2">
+            <Pill tone="ok">Free entry</Pill>
+            {contest.minTier > 0 && (
+              <TierBadge tier={tierAsId} />
+            )}
+          </div>
+          <p className="font-mono text-xs text-muted">#{contestShort(contest.contestId)}</p>
+        </div>
+        {pool > 0n && (
+          <div className="text-right">
+            <p className="text-base font-semibold tabular-nums text-ink">{fmtUsdc(pool)}</p>
+            <p className="text-xs text-muted">prize pool</p>
+          </div>
+        )}
+      </div>
+
+      {/* Stats row */}
+      <dl className="flex gap-6">
+        <div>
+          <dt className="text-xs font-medium uppercase tracking-wide text-muted">Entrants</dt>
+          <dd className="mt-0.5 text-sm font-semibold tabular-nums text-ink">{contest.entrants}</dd>
+        </div>
+        <div>
+          <dt className="text-xs font-medium uppercase tracking-wide text-muted">Rake</dt>
+          <dd className="mt-0.5 text-sm font-semibold tabular-nums text-ink">
+            {(contest.rakeBps / 100).toFixed(1)}%
+          </dd>
+        </div>
+        <div>
+          <dt className="text-xs font-medium uppercase tracking-wide text-muted">Min tier</dt>
+          <dd className="mt-0.5 text-sm font-semibold text-ink">
+            {TIER_NAME[contest.minTier as Tier] ?? `Tier ${contest.minTier}`}+
+          </dd>
+        </div>
+      </dl>
+
+      {/* CTA */}
+      <div className="mt-auto pt-1">
+        {!address ? (
+          <Pill tone="warn">Connect a wallet to enter.</Pill>
+        ) : (
+          <TxButton
+            request={enterRequest}
+            label="Enter free contest"
+          />
+        )}
+      </div>
+    </Panel>
+  );
+}
+
+// ── Marquee paid card (ink panel scoreboard) ──────────────────────────────────
+
+function MarqueeContestCard({ contest, address, geo }: ContestCardProps) {
+  const entryFee = BigInt(contest.entryFee);
+  const pool = BigInt(contest.pool);
+  const contestIdBigInt = BigInt(contest.contestId);
+
+  const geoBlocked = geo != null && geo.paid !== "allow";
   const geoMessage =
     geo?.paid === "block"
-      ? "Paid contests aren't available in your region"
+      ? "Paid contests not available in your region"
       : geo?.paid === "kyc"
       ? "KYC required for paid contests in your region"
       : null;
 
-  // Request objects built at module scope (inside the component fn is fine since they are stable per render)
   const enterRequest = {
     address: ADDRESSES.ContestEscrow,
     abi: ABIS.ContestEscrow,
@@ -80,68 +176,226 @@ function ContestCard({ contest, address, geo }: ContestCardProps) {
     args: [ADDRESSES.ContestEscrow, entryFee] as const,
   } as const;
 
+  const tierAsId = (contest.minTier <= 3 ? contest.minTier : 0) as TierId;
+
   return (
-    <div className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
-      <div className="mb-3 flex items-start justify-between gap-4">
-        <div>
-          <p className="text-xs font-mono text-zinc-400">Contest #{contest.contestId.slice(-8)}</p>
-          <p className="text-sm font-semibold">
-            {isFree ? "Free Entry" : `Entry: ${fmtUsdc(entryFee)} USDC`}
-          </p>
+    <Panel
+      variant="ink"
+      className="flex flex-col gap-6 p-6 transition-[transform,box-shadow] duration-200 [transition-timing-function:var(--ease-out-expo)] hover:-translate-y-0.5 hover:shadow-lift"
+    >
+      {/* Header row */}
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex flex-col gap-1.5">
+          <TierBadge tier={tierAsId} />
+          <p className="font-mono text-xs text-on-panel-muted">#{contestShort(contest.contestId)}</p>
         </div>
-        <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-600">
-          {minTierLabel}+
-        </span>
+        <Pill tone="flame">Paid</Pill>
       </div>
 
-      <div className="mb-4 grid grid-cols-3 gap-2 text-center text-xs">
+      {/* Prize pool — big scoreboard number */}
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-on-panel-muted">
+          Prize pool
+        </p>
+        <Stat value={fmtUsdc(pool)} label="USDC" tone="on-panel" />
+      </div>
+
+      {/* Stats row */}
+      <dl className="flex gap-6 border-t border-[color:var(--panel-2)] pt-4">
         <div>
-          <p className="font-semibold">{fmtUsdc(pool)}</p>
-          <p className="text-zinc-400">Pool (USDC)</p>
+          <dt className="text-xs font-medium uppercase tracking-wide text-on-panel-muted">Entry</dt>
+          <dd className="mt-0.5 text-sm font-semibold tabular-nums text-on-panel">
+            {fmtUsdc(entryFee)} USDC
+          </dd>
         </div>
         <div>
-          <p className="font-semibold">{contest.entrants}</p>
-          <p className="text-zinc-400">Entrants</p>
+          <dt className="text-xs font-medium uppercase tracking-wide text-on-panel-muted">Entrants</dt>
+          <dd className="mt-0.5 text-sm font-semibold tabular-nums text-on-panel">{contest.entrants}</dd>
         </div>
         <div>
-          <p className="font-semibold">{(contest.rakeBps / 100).toFixed(1)}%</p>
-          <p className="text-zinc-400">Rake</p>
+          <dt className="text-xs font-medium uppercase tracking-wide text-on-panel-muted">Rake</dt>
+          <dd className="mt-0.5 text-sm font-semibold tabular-nums text-on-panel">
+            {(contest.rakeBps / 100).toFixed(1)}%
+          </dd>
+        </div>
+      </dl>
+
+      {/* CTA */}
+      <div>
+        {!address ? (
+          <Pill tone="warn">Connect a wallet to enter.</Pill>
+        ) : geoBlocked ? (
+          <button
+            disabled
+            aria-disabled="true"
+            className={cx(
+              buttonClasses("secondary", "md", "w-full cursor-not-allowed opacity-50"),
+            )}
+          >
+            {geoMessage ?? "Unavailable in your region"}
+          </button>
+        ) : (
+          <div className="flex flex-col gap-3">
+            <div className="rounded-sm border border-[color:var(--panel-2)] px-3 py-2">
+              <p className="text-xs font-medium text-on-panel-muted">
+                Step 1 — approve {fmtUsdc(entryFee)} USDC for escrow
+              </p>
+            </div>
+            <TxButton
+              request={approveRequest}
+              label={`Approve ${fmtUsdc(entryFee)} USDC`}
+            />
+            <div className="rounded-sm border border-[color:var(--panel-2)] px-3 py-2">
+              <p className="text-xs font-medium text-on-panel-muted">
+                Step 2 — enter contest
+              </p>
+            </div>
+            <TxButton
+              request={enterRequest}
+              label="Enter contest"
+            />
+          </div>
+        )}
+      </div>
+    </Panel>
+  );
+}
+
+// ── Standard paid card (paper panel) ─────────────────────────────────────────
+
+function PaidContestCard({ contest, address, geo }: ContestCardProps) {
+  const entryFee = BigInt(contest.entryFee);
+  const pool = BigInt(contest.pool);
+  const contestIdBigInt = BigInt(contest.contestId);
+
+  const geoBlocked = geo != null && geo.paid !== "allow";
+  const geoMessage =
+    geo?.paid === "block"
+      ? "Paid contests not available in your region"
+      : geo?.paid === "kyc"
+      ? "KYC required for paid contests in your region"
+      : null;
+
+  const enterRequest = {
+    address: ADDRESSES.ContestEscrow,
+    abi: ABIS.ContestEscrow,
+    functionName: "enter",
+    args: [contestIdBigInt] as const,
+  } as const;
+
+  const approveRequest = {
+    address: ADDRESSES.MockUSDC,
+    abi: ABIS.MockUSDC,
+    functionName: "approve",
+    args: [ADDRESSES.ContestEscrow, entryFee] as const,
+  } as const;
+
+  const tierAsId = (contest.minTier <= 3 ? contest.minTier : 0) as TierId;
+
+  return (
+    <Panel
+      variant="paper"
+      className="flex flex-col gap-5 p-5 transition-[transform,box-shadow] duration-200 [transition-timing-function:var(--ease-out-expo)] hover:-translate-y-0.5 hover:shadow-lift"
+    >
+      {/* Header row */}
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-2">
+            <Pill tone="cobalt">Paid</Pill>
+            <TierBadge tier={tierAsId} />
+          </div>
+          <p className="font-mono text-xs text-muted">#{contestShort(contest.contestId)}</p>
+        </div>
+        <div className="text-right">
+          <p className="text-base font-semibold tabular-nums text-ink">{fmtUsdc(pool)}</p>
+          <p className="text-xs text-muted">prize pool</p>
         </div>
       </div>
 
-      {!address ? (
-        <p className="text-xs text-amber-700">Connect a wallet to enter.</p>
-      ) : isFree ? (
-        // Free contest — single enter button
-        <TxButton
-          request={enterRequest}
-          label="Enter (free)"
-        />
-      ) : geoBlocked ? (
-        // Paid contest geo-blocked
-        <button
-          disabled
-          className="w-full rounded bg-zinc-300 px-3 py-1.5 text-sm text-zinc-600"
-        >
-          {geoMessage}
-        </button>
-      ) : (
-        // Paid contest — approve then enter
-        <div className="flex flex-col gap-2">
-          <p className="text-xs text-zinc-500">
-            Step 1: approve {fmtUsdc(entryFee)} USDC for escrow
-          </p>
-          <TxButton
-            request={approveRequest}
-            label={`Approve ${fmtUsdc(entryFee)} USDC`}
-          />
-          <p className="text-xs text-zinc-500">Step 2: enter contest</p>
-          <TxButton
-            request={enterRequest}
-            label="Enter contest"
-          />
+      {/* Stats row */}
+      <dl className="flex gap-6">
+        <div>
+          <dt className="text-xs font-medium uppercase tracking-wide text-muted">Entry fee</dt>
+          <dd className="mt-0.5 text-sm font-semibold tabular-nums text-ink">
+            {fmtUsdc(entryFee)} USDC
+          </dd>
         </div>
-      )}
+        <div>
+          <dt className="text-xs font-medium uppercase tracking-wide text-muted">Entrants</dt>
+          <dd className="mt-0.5 text-sm font-semibold tabular-nums text-ink">{contest.entrants}</dd>
+        </div>
+        <div>
+          <dt className="text-xs font-medium uppercase tracking-wide text-muted">Rake</dt>
+          <dd className="mt-0.5 text-sm font-semibold tabular-nums text-ink">
+            {(contest.rakeBps / 100).toFixed(1)}%
+          </dd>
+        </div>
+      </dl>
+
+      {/* CTA */}
+      <div className="mt-auto pt-1">
+        {!address ? (
+          <Pill tone="warn">Connect a wallet to enter.</Pill>
+        ) : geoBlocked ? (
+          <button
+            disabled
+            aria-disabled="true"
+            className={cx(
+              buttonClasses("secondary", "md", "w-full cursor-not-allowed opacity-50"),
+            )}
+          >
+            {geoMessage ?? "Unavailable in your region"}
+          </button>
+        ) : (
+          <div className="flex flex-col gap-2">
+            <p className="text-xs text-muted">
+              Step 1: approve {fmtUsdc(entryFee)} USDC for escrow
+            </p>
+            <TxButton
+              request={approveRequest}
+              label={`Approve ${fmtUsdc(entryFee)} USDC`}
+            />
+            <p className="text-xs text-muted">Step 2: enter contest</p>
+            <TxButton
+              request={enterRequest}
+              label="Enter contest"
+            />
+          </div>
+        )}
+      </div>
+    </Panel>
+  );
+}
+
+// ── Contest card dispatcher ───────────────────────────────────────────────────
+
+function ContestCard(props: ContestCardProps) {
+  const { contest } = props;
+  const isFree = BigInt(contest.entryFee) === 0n;
+  if (isFree) return <FreeContestCard {...props} />;
+  if (isMarqueePaid(contest)) return <MarqueeContestCard {...props} />;
+  return <PaidContestCard {...props} />;
+}
+
+// ── Skeleton grid ─────────────────────────────────────────────────────────────
+
+function ContestSkeletons() {
+  return (
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2" aria-busy="true" aria-label="Loading contests">
+      {[0, 1, 2, 3].map((i) => (
+        <div key={i} className="flex flex-col gap-4 rounded-card border border-line bg-paper-2 p-5 shadow-sticker">
+          <div className="flex items-start justify-between gap-3">
+            <Skeleton className="h-5 w-20 rounded-full" />
+            <Skeleton className="h-5 w-16" />
+          </div>
+          <div className="flex gap-6">
+            <Skeleton className="h-8 w-16" />
+            <Skeleton className="h-8 w-12" />
+            <Skeleton className="h-8 w-14" />
+          </div>
+          <Skeleton className="h-10 w-full" />
+        </div>
+      ))}
     </div>
   );
 }
@@ -182,58 +436,114 @@ export default function ContestsPage() {
     return () => { cancelled = true; };
   }, [matchday, refreshKey]);
 
+  const freeContests = contests.filter((c) => BigInt(c.entryFee) === 0n);
+  const paidContests = contests.filter((c) => BigInt(c.entryFee) > 0n);
+
   return (
-    <main className="flex max-w-3xl flex-col gap-6">
-      <header>
-        <h1 className="text-2xl font-bold">Contests</h1>
-        <p className="text-sm opacity-70">Enter a contest to compete for prizes.</p>
-      </header>
+    <main className="flex max-w-3xl flex-col gap-8 py-2">
 
-      {/* Matchday selector */}
-      <section className="flex items-center gap-3">
-        <label className="text-sm font-medium" htmlFor="matchday-select">
-          Matchday
-        </label>
-        <select
-          id="matchday-select"
-          className="rounded border border-zinc-300 bg-white px-3 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-400"
-          value={matchday}
-          onChange={(e) => setMatchday(Number(e.target.value))}
-        >
-          {[1, 2, 3, 4, 5, 6, 7].map((d) => (
-            <option key={d} value={d}>
-              Matchday {d}
-            </option>
-          ))}
-        </select>
-        <button
-          type="button"
-          onClick={() => setRefreshKey((k) => k + 1)}
-          className="rounded border border-zinc-300 px-3 py-1 text-xs hover:bg-zinc-50"
-        >
-          Refresh
-        </button>
-      </section>
+      {/* Page heading + matchday selector */}
+      <div className="flex flex-col gap-5">
+        <SectionHeading
+          kicker="Matchday contests"
+          title="Pick your bracket"
+        />
 
-      {/* Loading / error */}
-      {loading && <p className="text-sm opacity-60">Loading contests…</p>}
+        {/* Matchday selector + refresh */}
+        <div className="flex items-center gap-3">
+          <label
+            htmlFor="matchday-select"
+            className="text-sm font-medium text-ink-2 shrink-0"
+          >
+            Matchday
+          </label>
+          <select
+            id="matchday-select"
+            className={cx(
+              "h-9 rounded-sm border border-line-2 bg-paper-2 px-3 text-sm text-ink",
+              "transition-[border-color,box-shadow] duration-150 [transition-timing-function:var(--ease-out-expo)]",
+              "hover:border-ink-2",
+              "focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cobalt",
+            )}
+            value={matchday}
+            onChange={(e) => setMatchday(Number(e.target.value))}
+          >
+            {[1, 2, 3, 4, 5, 6, 7].map((d) => (
+              <option key={d} value={d}>
+                Matchday {d}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            onClick={() => setRefreshKey((k) => k + 1)}
+            className={buttonClasses("ghost", "sm")}
+            aria-label="Refresh contests"
+          >
+            Refresh
+          </button>
+        </div>
+      </div>
+
+      {/* Error state */}
       {error && (
-        <p className="rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          Could not load contests: {error}
-        </p>
+        <Panel variant="outline" className="px-4 py-3">
+          <p className="text-sm text-danger" role="alert">
+            Could not load contests: {error}
+          </p>
+        </Panel>
       )}
+
+      {/* Loading skeletons */}
+      {loading && <ContestSkeletons />}
 
       {/* Empty state */}
       {!loading && !error && contests.length === 0 && (
-        <p className="text-sm opacity-60">No contests found for Matchday {matchday}.</p>
+        <EmptyState
+          icon="🏆"
+          title={`No contests for Matchday ${matchday}`}
+          hint="Contests open before kickoff. Check back when the matchday schedule is confirmed."
+          action={
+            <button
+              type="button"
+              onClick={() => setRefreshKey((k) => k + 1)}
+              className={buttonClasses("secondary", "sm")}
+            >
+              Try again
+            </button>
+          }
+        />
       )}
 
-      {/* Contest grid */}
-      {!loading && contests.length > 0 && (
-        <section className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          {contests.map((c) => (
-            <ContestCard key={c.contestId} contest={c} address={address} geo={geo} />
-          ))}
+      {/* Free contests section */}
+      {!loading && freeContests.length > 0 && (
+        <section aria-label="Free contests">
+          <SectionHeading
+            kicker="No entry fee"
+            title="Free contests"
+            className="mb-4"
+          />
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {freeContests.map((c) => (
+              <ContestCard key={c.contestId} contest={c} address={address} geo={geo} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Paid contests section */}
+      {!loading && paidContests.length > 0 && (
+        <section aria-label="Paid contests">
+          <SectionHeading
+            kicker="Prize contests"
+            title="Paid brackets"
+            className="mb-4"
+          />
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {paidContests.map((c) => (
+              <ContestCard key={c.contestId} contest={c} address={address} geo={geo} />
+            ))}
+          </div>
         </section>
       )}
     </main>

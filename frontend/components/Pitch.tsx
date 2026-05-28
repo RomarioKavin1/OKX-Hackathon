@@ -1,14 +1,14 @@
 "use client";
 
 /**
- * Pitch.tsx — Formation slot grid displayed as a football pitch visual.
+ * Pitch.tsx — Formation slot grid displayed as a tactics board.
  *
  * Each slot is:
  *  - A valid HTML5 DnD drop target (dragover/drop)
  *  - Keyboard-accessible: tabIndex=0, activatable with Enter/Space to receive
  *    the currently "selected" card from the builder's keyboard flow.
  *  - Has aria-label describing position + occupant name (if any).
- *  - Shows OOP (out-of-position) slots in a color-blind-safe way: orange border
+ *  - Shows OOP (out-of-position) slots in a color-blind-safe way: warn border
  *    + "OOP" label icon (not just color alone, per §8.5).
  */
 
@@ -16,6 +16,7 @@ import type { KeyboardEvent } from "react";
 import type { Position } from "@/lib/types";
 import type { CardChipData } from "./CardChip";
 import { CardChip } from "./CardChip";
+import { cx, Pill } from "@/components/ui";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Public types
@@ -109,12 +110,22 @@ function PitchSlot({
   }
 
   const isEmpty = slot.card === null;
-  const oopClass = slot.isOop
-    ? "border-orange-400 bg-orange-50"
-    : isEmpty
-      ? "border-dashed border-zinc-400 bg-zinc-50/60 hover:bg-zinc-100/80"
-      : "border-green-700/40 bg-green-900/5";
-  const pendingClass = isPending ? "ring-2 ring-zinc-900 bg-zinc-100/80" : "";
+
+  // Slot surface: OOP = warn accent, pending = cobalt accent, empty = dashed line, filled = subtle
+  const slotBase = cx(
+    "relative flex flex-col items-center justify-center rounded-sm border-2 min-w-[70px] min-h-[80px] p-1",
+    "transition-[border-color,background-color,box-shadow] duration-150 [transition-timing-function:var(--ease-out-expo)]",
+    "cursor-pointer",
+    "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cobalt",
+  );
+
+  const slotSurface = slot.isOop
+    ? "border-warn/70 bg-warn/8"
+    : isPending
+      ? "border-cobalt/60 bg-cobalt/8"
+      : isEmpty
+        ? "border-dashed border-line-2 bg-paper-3/60 hover:bg-paper-3 hover:border-line-2"
+        : "border-line bg-paper-2/70";
 
   const slotAriaLabel = slot.card
     ? `Slot ${slotIndex + 1} ${slot.position}: ${slot.card.playerName}${slot.isOop ? ", out of position" : ""}${isCaptain ? ", Captain" : ""}${isVice ? ", Vice" : ""}. Press Enter to replace, Delete to remove.`
@@ -129,22 +140,17 @@ function PitchSlot({
       onDrop={handleDrop}
       onKeyDown={handleKeyDown}
       onClick={() => onActivate(slotIndex)}
-      className={[
-        "relative flex flex-col items-center justify-center rounded border-2 min-w-[70px] min-h-[80px] p-1 transition-colors cursor-pointer",
-        "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900",
-        oopClass,
-        pendingClass,
-      ].join(" ")}
+      className={cx(slotBase, slotSurface)}
     >
       {/* Position label */}
-      <span className="absolute top-0.5 left-1 text-[9px] font-bold text-zinc-500 uppercase">
+      <span className="absolute top-0.5 left-1 text-[9px] font-semibold text-muted uppercase tracking-wider">
         {slot.position}
       </span>
 
-      {/* OOP badge — color-blind-safe: text + icon + orange color */}
+      {/* OOP badge — color-blind-safe: text + icon + warn token */}
       {slot.isOop && (
         <span
-          className="absolute top-0.5 right-0.5 rounded bg-orange-500 px-0.5 text-[8px] font-bold text-white"
+          className="absolute top-0.5 right-0.5 rounded-xs bg-warn/20 border border-warn/50 px-0.5 text-[8px] font-bold text-[color:var(--ink-2)]"
           aria-label="Out of position"
           title="Out of position"
         >
@@ -152,19 +158,16 @@ function PitchSlot({
         </span>
       )}
 
-      {/* Formation mult badge */}
+      {/* Formation mult badge — restyled as Pill */}
       {slot.card && slot.formationMult !== 1 && (
-        <span
-          className={[
-            "absolute bottom-0.5 right-0.5 rounded text-[8px] font-bold px-0.5",
-            slot.formationMult > 1
-              ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
-              : "bg-orange-100 text-orange-800 border border-orange-300",
-          ].join(" ")}
-          aria-label={`Formation multiplier: ${slot.formationMult.toFixed(2)}x`}
-          title={`Formation ×${slot.formationMult.toFixed(2)}`}
-        >
-          ×{slot.formationMult.toFixed(2)}
+        <span className="absolute bottom-0.5 right-0.5">
+          <Pill
+            tone={slot.formationMult > 1 ? "ok" : "warn"}
+            aria-label={`Formation multiplier: ${slot.formationMult.toFixed(2)}x`}
+            className="!text-[8px] !px-1 !py-0"
+          >
+            ×{slot.formationMult.toFixed(2)}
+          </Pill>
         </span>
       )}
 
@@ -179,8 +182,8 @@ function PitchSlot({
           compact
         />
       ) : (
-        <span className="text-[10px] text-zinc-400 text-center leading-tight">
-          {isPending ? "← drop here" : `+ ${slot.position}`}
+        <span className="text-[10px] text-muted text-center leading-tight select-none">
+          {isPending ? "drop here" : `+ ${slot.position}`}
         </span>
       )}
     </div>
@@ -205,16 +208,35 @@ export function Pitch({
   return (
     <div
       aria-label="Football pitch lineup grid"
-      className="relative flex flex-col gap-2 rounded-xl bg-green-800/10 border border-green-700/30 p-3"
+      className="grain relative flex flex-col gap-3 rounded-card bg-panel border border-[color:var(--panel-2)] p-4 overflow-hidden"
     >
-      {/* Pitch markings (purely decorative) */}
-      <div aria-hidden className="pointer-events-none absolute inset-0 flex items-center justify-center opacity-10">
-        <div className="w-24 h-24 rounded-full border-2 border-green-700" />
+      {/*
+        Decorative pitch markings — thin hairlines only, low-opacity grass color.
+        No green flood-fill; the panel surface does the heavy lifting.
+      */}
+      <div aria-hidden className="pointer-events-none absolute inset-0">
+        {/* Halfway line */}
+        <div
+          className="absolute left-4 right-4"
+          style={{
+            top: "50%",
+            height: "1px",
+            background: `oklch(0.62 0.150 150 / 0.18)`,
+          }}
+        />
+        {/* Center circle */}
+        <div
+          className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full"
+          style={{
+            width: "64px",
+            height: "64px",
+            border: "1px solid oklch(0.62 0.150 150 / 0.18)",
+          }}
+        />
       </div>
-      <div aria-hidden className="pointer-events-none absolute left-1/2 top-0 bottom-0 w-px bg-green-700/20" />
 
       {rows.map((row, rowIdx) => (
-        <div key={rowIdx} className="flex justify-center gap-2 flex-wrap">
+        <div key={rowIdx} className="flex justify-center gap-2 flex-wrap relative z-10">
           {row.map((slot) => {
             const si = slotIndexOf(slot, slots);
             return (

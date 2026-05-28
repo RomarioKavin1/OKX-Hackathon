@@ -223,7 +223,7 @@ export async function verify(matchday: number): Promise<{ allPassed: boolean }> 
   const supabase = supabaseAnonServer();
   let allPassed = true;
 
-  console.log(`\nManagerCup Public Verifier — matchday ${matchday}`);
+  console.log(`\nPANENKA Public Verifier — matchday ${matchday}`);
   console.log("=".repeat(60));
   console.log("Data sources: Supabase anon + publicClient (no private key)");
 

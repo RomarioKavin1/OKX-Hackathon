@@ -15,33 +15,42 @@
 
 import { useEffect, useState } from "react";
 import { useWallets } from "@privy-io/react-auth";
+import {
+  Panel,
+  Pill,
+  SectionHeading,
+  Stat,
+  Skeleton,
+  EmptyState,
+  cx,
+} from "@/components/ui";
 import type { ReportResponse, TraitHeatmapCell } from "@/app/api/report/route";
 
-// ── Sub-components (module-scope; no sync setState in effect) ─────────────────
+// ── Sub-components (module-scope; no sync setState in effect) ------------------
 
 interface BarProps {
-  /** 0–100 */
+  /** 0-100 */
   pct: number;
   label: string;
   sublabel?: string;
-  /** Tailwind bg class */
-  color: string;
+  /** Token class for the fill: one of the design-system tones */
+  fillClass: string;
   /** aria-label text */
   ariaLabel: string;
 }
 
-function HorizontalBar({ pct, label, sublabel, color, ariaLabel }: BarProps) {
+function HorizontalBar({ pct, label, sublabel, fillClass, ariaLabel }: BarProps) {
   const clamped = Math.min(100, Math.max(0, pct));
   return (
-    <div className="flex flex-col gap-1">
-      <div className="flex items-baseline justify-between">
-        <span className="text-sm font-medium text-zinc-800">{label}</span>
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="text-sm font-medium text-ink">{label}</span>
         {sublabel && (
-          <span className="text-xs text-zinc-500">{sublabel}</span>
+          <span className="text-xs text-muted">{sublabel}</span>
         )}
       </div>
       <div
-        className="relative h-6 w-full overflow-hidden rounded bg-zinc-100"
+        className="relative h-7 w-full overflow-hidden rounded-sm bg-paper-3"
         role="meter"
         aria-valuenow={Math.round(clamped)}
         aria-valuemin={0}
@@ -49,10 +58,13 @@ function HorizontalBar({ pct, label, sublabel, color, ariaLabel }: BarProps) {
         aria-label={ariaLabel}
       >
         <div
-          className={`absolute inset-y-0 left-0 rounded ${color} transition-all duration-500`}
+          className={cx(
+            "absolute inset-y-0 left-0 rounded-sm transition-all duration-500 [transition-timing-function:var(--ease-out-expo)]",
+            fillClass,
+          )}
           style={{ width: `${clamped}%` }}
         />
-        <span className="absolute inset-0 flex items-center px-2 text-xs font-semibold text-zinc-900 mix-blend-multiply">
+        <span className="absolute inset-0 flex items-center px-2.5 text-xs font-semibold text-ink mix-blend-multiply">
           {Math.round(clamped)}%
         </span>
       </div>
@@ -74,37 +86,36 @@ function DualBar({ labelA, valueA, labelB, valueB, unit = "pts" }: DualBarProps)
   const pctB = (valueB / max) * 100;
 
   return (
-    <div className="flex flex-col gap-2">
-      {/* Bar A */}
+    <div className="flex flex-col gap-3">
+      {/* Bar A — yours (cobalt) */}
       <div className="flex items-center gap-3">
-        <span className="w-28 shrink-0 text-right text-xs font-medium text-zinc-700">
+        <span className="w-28 shrink-0 text-right text-xs font-medium text-ink">
           {labelA}
         </span>
         <div
-          className="relative flex-1 h-6 overflow-hidden rounded bg-zinc-100"
+          className="relative h-7 flex-1 overflow-hidden rounded-sm bg-paper-3"
           role="meter"
           aria-valuenow={Math.round(valueA)}
           aria-valuemin={0}
           aria-valuemax={Math.ceil(max)}
           aria-label={`${labelA}: ${valueA.toFixed(1)} ${unit}`}
         >
-          {/* Pattern stripe for "yours" bar — shape supplement for colorblind */}
           <div
-            className="absolute inset-y-0 left-0 rounded bg-[#1d4ed8]"
+            className="absolute inset-y-0 left-0 rounded-sm bg-cobalt transition-all duration-500 [transition-timing-function:var(--ease-out-expo)]"
             style={{ width: `${pctA}%` }}
           />
-          <span className="absolute inset-0 flex items-center px-2 text-xs font-semibold text-white">
+          <span className="absolute inset-0 flex items-center px-2.5 text-xs font-semibold text-on-panel">
             {valueA.toFixed(1)} {unit}
           </span>
         </div>
       </div>
-      {/* Bar B */}
+      {/* Bar B — reference (neutral fill) */}
       <div className="flex items-center gap-3">
-        <span className="w-28 shrink-0 text-right text-xs font-medium text-zinc-500">
+        <span className="w-28 shrink-0 text-right text-xs font-medium text-muted">
           {labelB}
         </span>
         <div
-          className="relative flex-1 h-6 overflow-hidden rounded bg-zinc-100"
+          className="relative h-7 flex-1 overflow-hidden rounded-sm bg-paper-3"
           role="meter"
           aria-valuenow={Math.round(valueB)}
           aria-valuemin={0}
@@ -112,10 +123,10 @@ function DualBar({ labelA, valueA, labelB, valueB, unit = "pts" }: DualBarProps)
           aria-label={`${labelB}: ${valueB.toFixed(1)} ${unit}`}
         >
           <div
-            className="absolute inset-y-0 left-0 rounded bg-zinc-400"
+            className="absolute inset-y-0 left-0 rounded-sm bg-line-2 transition-all duration-500 [transition-timing-function:var(--ease-out-expo)]"
             style={{ width: `${pctB}%` }}
           />
-          <span className="absolute inset-0 flex items-center px-2 text-xs font-semibold text-zinc-700">
+          <span className="absolute inset-0 flex items-center px-2.5 text-xs font-semibold text-ink-2">
             {valueB.toFixed(1)} {unit}
           </span>
         </div>
@@ -131,7 +142,7 @@ interface SynergyGridProps {
 function SynergyGrid({ cells }: SynergyGridProps) {
   if (cells.length === 0) {
     return (
-      <p className="text-xs text-zinc-500">
+      <p className="text-xs text-muted">
         Synergy data not available for this matchday.
       </p>
     );
@@ -145,10 +156,6 @@ function SynergyGrid({ cells }: SynergyGridProps) {
       aria-label="Trait synergy heatmap"
     >
       {cells.map((cell) => {
-        // Color-blind safe: active = solid border + checkmark icon; inactive = dashed border
-        const borderClass = cell.active
-          ? "border-[#1d4ed8] bg-blue-50"
-          : "border-zinc-300 bg-zinc-50";
         const multPct = cell.active
           ? Math.round((cell.avgMult - 1) * 100)
           : 0;
@@ -156,32 +163,41 @@ function SynergyGrid({ cells }: SynergyGridProps) {
         return (
           <div
             key={cell.synergy}
-            className={`flex flex-col gap-1 rounded-lg border-2 px-3 py-2 ${borderClass}`}
+            className={cx(
+              "flex flex-col gap-1.5 rounded-card px-3 py-2.5",
+              cell.active
+                ? "border border-line bg-paper-2 shadow-sticker"
+                : "border border-line bg-paper-3",
+            )}
             role="listitem"
             aria-label={`${cell.synergy}: ${cell.active ? "active" : "inactive"}${cell.active ? `, +${multPct}% avg boost` : ""}`}
           >
             <div className="flex items-center gap-1.5">
-              {/* Shape indicator: filled square = active, empty circle = inactive */}
+              {/* Shape indicator: filled square = active, empty circle = inactive (colorblind safe) */}
               {cell.active ? (
                 <span
-                  className="inline-block h-3 w-3 rounded-sm bg-[#1d4ed8] shrink-0"
+                  className="inline-block h-2.5 w-2.5 shrink-0 rounded-xs bg-cobalt"
                   aria-hidden="true"
                 />
               ) : (
                 <span
-                  className="inline-block h-3 w-3 rounded-full border-2 border-zinc-400 shrink-0"
+                  className="inline-block h-2.5 w-2.5 shrink-0 rounded-full border-2 border-line-2"
                   aria-hidden="true"
                 />
               )}
-              <span className="text-xs font-semibold text-zinc-800">
+              <span className="text-xs font-semibold text-ink">
                 {cell.synergy}
               </span>
+              {cell.active && (
+                <Pill tone="cobalt" className="ml-auto">
+                  Active
+                </Pill>
+              )}
             </div>
-            <div className="text-[10px] text-zinc-500">
+            <div className="text-[10px] text-muted">
               {cell.active ? (
                 <>
-                  <span className="font-medium text-[#1d4ed8]">Active</span>
-                  {" — "}avg {cell.avgMult >= 1 ? "+" : ""}
+                  avg {cell.avgMult >= 1 ? "+" : ""}
                   {((cell.avgMult - 1) * 100).toFixed(1)}%
                 </>
               ) : (
@@ -189,11 +205,11 @@ function SynergyGrid({ cells }: SynergyGridProps) {
               )}
             </div>
             {cell.affectedPositions.length > 0 && (
-              <div className="flex flex-wrap gap-0.5 mt-0.5">
+              <div className="mt-0.5 flex flex-wrap gap-0.5">
                 {cell.affectedPositions.map((pos) => (
                   <span
                     key={pos}
-                    className="rounded bg-zinc-200 px-1 py-0.5 text-[9px] font-medium text-zinc-600"
+                    className="rounded-xs bg-paper-3 px-1 py-0.5 text-[9px] font-medium text-ink-2"
                   >
                     {pos}
                   </span>
@@ -203,26 +219,6 @@ function SynergyGrid({ cells }: SynergyGridProps) {
           </div>
         );
       })}
-    </div>
-  );
-}
-
-interface StatChipProps {
-  label: string;
-  value: string;
-  icon?: string;
-}
-
-function StatChip({ label, value, icon }: StatChipProps) {
-  return (
-    <div className="flex flex-col items-center rounded-xl border border-zinc-200 bg-white px-4 py-3 shadow-sm min-w-[100px]">
-      {icon && (
-        <span className="text-lg" aria-hidden="true">
-          {icon}
-        </span>
-      )}
-      <span className="mt-1 text-xl font-bold text-zinc-900">{value}</span>
-      <span className="text-[10px] text-zinc-500 text-center mt-0.5">{label}</span>
     </div>
   );
 }
@@ -271,29 +267,35 @@ export function ReportIsland({ matchday }: ReportIslandProps) {
     };
   }, [address, matchday]);
 
-  // ── Render states ─────────────────────────────────────────────────────────
+  // ── Render states ----------------------------------------------------------
 
   if (!address) {
     return (
-      <div className="rounded border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-800">
-        Connect your wallet to view your matchday report.
-      </div>
+      <EmptyState
+        icon="🃏"
+        title="Connect your wallet"
+        hint="Connect to view your matchday report and scoring breakdown."
+      />
     );
   }
 
   if (loading) {
     return (
-      <div className="text-sm text-zinc-500" aria-live="polite">
-        Loading report…
+      <div className="flex flex-col gap-4" aria-live="polite" aria-label="Loading report">
+        <Skeleton className="h-24 w-full" />
+        <Skeleton className="h-40 w-full" />
+        <Skeleton className="h-32 w-full" />
       </div>
     );
   }
 
   if (fetchError) {
     return (
-      <div className="rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-        Could not load report: {fetchError}
-      </div>
+      <Panel variant="outline" className="px-4 py-3">
+        <p className="text-sm text-danger" role="alert">
+          Could not load report: {fetchError}
+        </p>
+      </Panel>
     );
   }
 
@@ -301,19 +303,15 @@ export function ReportIsland({ matchday }: ReportIslandProps) {
 
   if (!report.scoresAvailable) {
     return (
-      <div className="rounded border border-zinc-200 bg-zinc-50 px-4 py-4">
-        <p className="text-sm font-medium text-zinc-700">
-          Scores not yet available for Matchday {matchday}.
-        </p>
-        <p className="mt-1 text-xs text-zinc-500">
-          Reports are published once the matchday is finalized and all player
-          events are ingested.
-        </p>
-      </div>
+      <EmptyState
+        icon="⏳"
+        title={`Scores not yet available for Matchday ${matchday}`}
+        hint="Reports are published once the matchday is finalized and all player events are ingested."
+      />
     );
   }
 
-  // ── Prepared values ───────────────────────────────────────────────────────
+  // ── Prepared values --------------------------------------------------------
 
   const decilePct = report.decileRank ?? 0;
   const optimalityPct =
@@ -331,136 +329,158 @@ export function ReportIsland({ matchday }: ReportIslandProps) {
       ? `${(report.chipEfficiency * 100 - 100).toFixed(1)}% boost`
       : "No chip";
 
-  // ── Charts ────────────────────────────────────────────────────────────────
+  // ── Charts -----------------------------------------------------------------
 
   return (
-    <div className="flex flex-col gap-8">
-      {/* ── Summary chips ───────────────────────────────────────────────────── */}
+    <div className="flex flex-col gap-10">
+      {/* Summary — ink panel scoreboard */}
       <section aria-labelledby="summary-heading">
-        <h2
+        <p
           id="summary-heading"
-          className="text-sm font-semibold text-zinc-600 uppercase tracking-wide mb-3"
+          className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-muted"
         >
           At a Glance
-        </h2>
-        <div className="flex flex-wrap gap-3">
-          <StatChip
-            label="Your Total"
-            value={report.yourTotal.toFixed(1)}
-            icon="⚽"
-          />
-          <StatChip
-            label="Contest Rank"
-            value={tierRankStr}
-            icon="🏆"
-          />
-          <StatChip
-            label="Percentile"
-            value={`${decilePct}th`}
-            icon="📊"
-          />
-          <StatChip
-            label="Optimality"
-            value={`${optimalityPct}%`}
-            icon="✨"
-          />
-          <StatChip
-            label="Chip Effect"
-            value={chipEffStr}
-            icon="🃏"
-          />
-        </div>
+        </p>
+        <Panel variant="ink" className="p-6">
+          <dl className="grid grid-cols-2 gap-x-8 gap-y-6 sm:grid-cols-3 lg:grid-cols-5">
+            <div>
+              <Stat
+                value={report.yourTotal.toFixed(1)}
+                label="Your Total"
+                tone="on-panel"
+              />
+            </div>
+            <div>
+              <Stat
+                value={tierRankStr}
+                label="Contest Rank"
+                tone="on-panel"
+              />
+            </div>
+            <div>
+              <Stat
+                value={`${decilePct}th`}
+                label="Percentile"
+                tone="on-panel"
+              />
+            </div>
+            <div>
+              <Stat
+                value={`${optimalityPct}%`}
+                label="Optimality"
+                tone="on-panel"
+              />
+            </div>
+            <div>
+              <Stat
+                value={chipEffStr}
+                label="Chip Effect"
+                tone="on-panel"
+              />
+            </div>
+          </dl>
+        </Panel>
       </section>
 
-      {/* ── Rank / Percentile bar ───────────────────────────────────────────── */}
+      {/* Rank / Percentile bar */}
       <section aria-labelledby="rank-heading">
-        <h2
-          id="rank-heading"
-          className="text-sm font-semibold text-zinc-600 uppercase tracking-wide mb-3"
-        >
-          Rank Percentile
-        </h2>
-        <HorizontalBar
-          pct={decilePct}
-          label="Your score beats"
-          sublabel={`${decilePct}th percentile`}
-          color="bg-[#1d4ed8]"
-          ariaLabel={`Your score is in the ${decilePct}th percentile for this matchday`}
+        <SectionHeading
+          kicker="Standing"
+          title="Rank Percentile"
+          className="mb-4"
         />
-        <p className="mt-1 text-xs text-zinc-500">
-          100 = top scorer; 0 = lowest scorer. Based on{" "}
-          {report.yourTotal.toFixed(1)} pts vs all matchday participants.
-        </p>
+        <Panel className="p-5">
+          <HorizontalBar
+            pct={decilePct}
+            label="Your score beats"
+            sublabel={`${decilePct}th percentile`}
+            fillClass="bg-cobalt"
+            ariaLabel={`Your score is in the ${decilePct}th percentile for this matchday`}
+          />
+          <p className="mt-2 text-xs text-muted">
+            100 = top scorer; 0 = lowest scorer. Based on{" "}
+            {report.yourTotal.toFixed(1)} pts vs all matchday participants.
+          </p>
+        </Panel>
       </section>
 
-      {/* ── Your score vs best possible ─────────────────────────────────────── */}
+      {/* Your score vs best possible */}
       <section aria-labelledby="total-heading">
-        <h2
-          id="total-heading"
-          className="text-sm font-semibold text-zinc-600 uppercase tracking-wide mb-3"
-        >
-          Your Score vs Best Possible
-        </h2>
-        <DualBar
-          labelA="Your lineup"
-          valueA={report.yourTotal}
-          labelB="Best possible"
-          valueB={report.bestPossibleTotal}
+        <SectionHeading
+          kicker="Lineup"
+          title="Your Score vs Best Possible"
+          className="mb-4"
         />
-        <p className="mt-2 text-xs text-zinc-500">
-          &quot;Best possible&quot; is a greedy counterfactual &mdash; the top-scoring
-          available player picked for each formation slot, reusing your
-          chip. Optimality: {optimalityPct}%.
-        </p>
+        <Panel className="p-5">
+          <DualBar
+            labelA="Your lineup"
+            valueA={report.yourTotal}
+            labelB="Best possible"
+            valueB={report.bestPossibleTotal}
+          />
+          <p className="mt-3 text-xs text-muted">
+            &quot;Best possible&quot; is a greedy counterfactual: the top-scoring
+            available player picked for each formation slot, reusing your
+            chip. Optimality: {optimalityPct}%.
+          </p>
+        </Panel>
       </section>
 
-      {/* ── Captain efficiency ──────────────────────────────────────────────── */}
+      {/* Captain efficiency */}
       <section aria-labelledby="captain-heading">
-        <h2
-          id="captain-heading"
-          className="text-sm font-semibold text-zinc-600 uppercase tracking-wide mb-3"
-        >
-          Captain Analysis
-        </h2>
-        <DualBar
-          labelA={
-            report.captain.captainName
-              ? `Capt: ${report.captain.captainName}`
-              : "Your captain"
+        <SectionHeading
+          kicker="Selection"
+          title="Captain Analysis"
+          action={
+            report.captain.captainName ? (
+              <Pill tone="gold">
+                <span aria-hidden>C</span>{" "}
+                {report.captain.captainName}
+              </Pill>
+            ) : undefined
           }
-          valueA={report.captain.captainActual}
-          labelB={
-            report.captain.bestCaptainName
-              ? `Best: ${report.captain.bestCaptainName}`
-              : "Best captain"
-          }
-          valueB={report.captain.captainBest}
+          className="mb-4"
         />
-        {captainPct > 0 && (
-          <p className="mt-2 text-xs text-zinc-500">
-            Your captain scored {captainPct}% of the points the best possible
-            captain would have scored.
-          </p>
-        )}
-        {report.captain.captainName === null && (
-          <p className="mt-2 text-xs text-zinc-400">
-            Captain data unavailable — lineup not found on-chain for this
-            matchday.
-          </p>
-        )}
+        <Panel className="p-5">
+          <DualBar
+            labelA={
+              report.captain.captainName
+                ? `Capt: ${report.captain.captainName}`
+                : "Your captain"
+            }
+            valueA={report.captain.captainActual}
+            labelB={
+              report.captain.bestCaptainName
+                ? `Best: ${report.captain.bestCaptainName}`
+                : "Best captain"
+            }
+            valueB={report.captain.captainBest}
+          />
+          {captainPct > 0 && (
+            <p className="mt-3 text-xs text-muted">
+              Your captain scored {captainPct}% of the points the best possible
+              captain would have scored.
+            </p>
+          )}
+          {report.captain.captainName === null && (
+            <p className="mt-3 text-xs text-muted">
+              Captain data unavailable: lineup not found on-chain for this
+              matchday.
+            </p>
+          )}
+        </Panel>
       </section>
 
-      {/* ── Trait synergy heatmap ──────────────────────────────────────────── */}
+      {/* Trait synergy heatmap */}
       <section aria-labelledby="synergy-heading">
-        <h2
-          id="synergy-heading"
-          className="text-sm font-semibold text-zinc-600 uppercase tracking-wide mb-3"
-        >
-          Formation Synergy Heatmap
-        </h2>
-        <p className="mb-3 text-xs text-zinc-500">
+        <SectionHeading
+          kicker="Formation"
+          title="Synergy Heatmap"
+          className="mb-4"
+        />
+        <p className="mb-4 text-xs text-muted">
           Active synergies boost specific positions. Filled squares = active;
-          empty circles = inactive (color-blind safe: shape + text encode state).
+          empty circles = inactive (colorblind safe: shape + text encode state).
         </p>
         <SynergyGrid cells={report.traitHeatmap} />
       </section>

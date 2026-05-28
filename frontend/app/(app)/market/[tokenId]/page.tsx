@@ -13,6 +13,19 @@ import { toUsdc } from "@/lib/business/format";
 import { PLAYER_BY_ID } from "@/lib/data/players";
 import { traitsOf } from "@/lib/data";
 import type { Stats } from "@/lib/types";
+import { PlayerCard } from "@/components/PlayerCard";
+import {
+  Button,
+  buttonClasses,
+  Panel,
+  Pill,
+  TierBadge,
+  Skeleton,
+  cx,
+} from "@/components/ui";
+import type { TierId } from "@/components/ui";
+import type { Nation } from "@/lib/data/nations";
+import type { Position } from "@/lib/types";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -28,7 +41,7 @@ interface OnChainData {
   rentalActive: boolean;
 }
 
-// ── Module-scope sub-components ───────────────────────────────────────────────
+// ── Sub-components ───────────────────────────────────────────────────────────
 
 interface StatRowProps {
   label: string;
@@ -38,14 +51,23 @@ interface StatRowProps {
 function StatRow({ label, value }: StatRowProps) {
   return (
     <div className="flex items-center gap-3">
-      <span className="w-20 text-xs font-medium text-zinc-500">{label}</span>
-      <div className="flex-1 rounded-full bg-zinc-100">
+      <span className="w-20 text-xs font-semibold uppercase tracking-[0.12em] text-muted">
+        {label}
+      </span>
+      <div
+        className="h-1.5 flex-1 overflow-hidden rounded-full bg-paper-3"
+        role="meter"
+        aria-valuenow={value}
+        aria-valuemin={0}
+        aria-valuemax={99}
+        aria-label={`${label}: ${value}`}
+      >
         <div
-          className="h-2 rounded-full bg-emerald-500"
+          className="h-full rounded-full bg-cobalt transition-[width] duration-500 [transition-timing-function:var(--ease-out-expo)]"
           style={{ width: `${Math.min(100, value)}%` }}
         />
       </div>
-      <span className="w-8 text-right text-xs font-mono text-zinc-700">{value}</span>
+      <span className="w-8 text-right font-mono text-xs text-ink-2 tabular-nums">{value}</span>
     </div>
   );
 }
@@ -82,13 +104,18 @@ function ListSection({ tokenId, onSuccess }: ListSectionProps) {
     : null;
 
   return (
-    <div className="flex flex-col gap-4 rounded-lg border border-zinc-200 bg-zinc-50 p-4">
-      <h3 className="font-semibold text-zinc-800">List for sale</h3>
+    <Panel variant="paper" className="flex flex-col gap-5 p-5">
+      <div className="flex items-center gap-2">
+        <span className="display text-lg text-ink">List for sale</span>
+        <Pill tone="neutral">
+          Step {step === "approve" ? "1" : "2"} of 2
+        </Pill>
+      </div>
 
-      <div className="flex flex-col gap-1">
-        <label className="text-xs font-medium text-zinc-600" htmlFor="list-price">
+      <label className="flex flex-col gap-1.5">
+        <span className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">
           Price (USDC)
-        </label>
+        </span>
         <input
           id="list-price"
           type="number"
@@ -97,15 +124,18 @@ function ListSection({ tokenId, onSuccess }: ListSectionProps) {
           placeholder="e.g. 50.00"
           value={priceInput}
           onChange={(e) => setPriceInput(e.target.value)}
-          className="w-40 rounded border border-zinc-300 bg-white px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-400"
+          className={cx(
+            "w-44 rounded-sm border border-line-2 bg-paper-3 px-3 py-2 text-sm text-ink",
+            "placeholder:text-muted focus:border-cobalt focus:outline-none focus:ring-2 focus:ring-cobalt/25",
+            "transition-[border-color,box-shadow] duration-150",
+          )}
         />
-      </div>
+      </label>
 
-      {/* Step 1: approve card */}
-      {step === "approve" && (
+      {step === "approve" ? (
         <div className="flex flex-col gap-2">
-          <p className="text-xs text-zinc-500">
-            Step 1 of 2 — Approve the Marketplace to transfer your card.
+          <p className="text-xs text-muted">
+            Approve the Marketplace contract to transfer your card.
           </p>
           <TxButton
             request={approveRequest}
@@ -113,13 +143,10 @@ function ListSection({ tokenId, onSuccess }: ListSectionProps) {
             onSuccess={() => setStep("list")}
           />
         </div>
-      )}
-
-      {/* Step 2: list */}
-      {step === "list" && (
+      ) : (
         <div className="flex flex-col gap-2">
-          <p className="text-xs text-zinc-500">
-            Step 2 of 2 — Create the listing on-chain.
+          <p className="text-xs text-muted">
+            Create the listing on-chain at your requested price.
           </p>
           {listRequest !== null ? (
             <TxButton
@@ -128,18 +155,18 @@ function ListSection({ tokenId, onSuccess }: ListSectionProps) {
               onSuccess={onSuccess}
             />
           ) : (
-            <p className="text-xs text-amber-700">Enter a valid price above before listing.</p>
+            <Pill tone="warn" className="self-start">Enter a valid price above before listing</Pill>
           )}
           <button
             type="button"
             onClick={() => setStep("approve")}
-            className="w-fit text-xs underline opacity-60 hover:opacity-80"
+            className={buttonClasses("ghost", "sm")}
           >
-            ← Back to approve
+            Back to approve
           </button>
         </div>
       )}
-    </div>
+    </Panel>
   );
 }
 
@@ -167,21 +194,30 @@ function BuySection({ tokenId, price, onSuccess }: BuySectionProps) {
   } as const;
 
   return (
-    <div className="flex flex-col gap-4 rounded-lg border border-zinc-200 bg-zinc-50 p-4">
-      <h3 className="font-semibold text-zinc-800">Buy this card</h3>
-      <p className="text-sm">
-        Price: <strong className="text-emerald-700">{fmtUsdc(price)} USDC</strong>
+    <Panel variant="ink" className="flex flex-col gap-5 p-5">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-on-panel-muted">
+            Listed price
+          </p>
+          <div className="display mt-0.5 text-3xl tabular-nums text-on-panel">
+            {fmtUsdc(price)}
+            <span className="ml-1 font-sans text-base font-semibold text-on-panel-muted">USDC</span>
+          </div>
+        </div>
+        <Pill tone="neutral">
+          Step {step === "approve" ? "1" : "2"} of 2
+        </Pill>
+      </div>
+
+      <p className="text-xs text-on-panel-muted">
+        4% platform fee + 1% to original first buyer applies on every sale (FR-M3).
       </p>
 
-      <p className="text-xs text-zinc-500">
-        Royalty note (FR-M3): 4% platform fee + 1% to the original first buyer applies on every
-        sale.
-      </p>
-
-      {step === "approve" && (
+      {step === "approve" ? (
         <div className="flex flex-col gap-2">
-          <p className="text-xs text-zinc-500">
-            Step 1 of 2 — Approve USDC spend for the Marketplace.
+          <p className="text-xs text-on-panel-muted">
+            Approve USDC spend so the Marketplace can take payment.
           </p>
           <TxButton
             request={approveUsdcRequest}
@@ -189,11 +225,9 @@ function BuySection({ tokenId, price, onSuccess }: BuySectionProps) {
             onSuccess={() => setStep("buy")}
           />
         </div>
-      )}
-
-      {step === "buy" && (
+      ) : (
         <div className="flex flex-col gap-2">
-          <p className="text-xs text-zinc-500">Step 2 of 2 — Complete the purchase on-chain.</p>
+          <p className="text-xs text-on-panel-muted">Complete the purchase on-chain.</p>
           <TxButton
             request={buyRequest}
             label="Buy card"
@@ -202,13 +236,13 @@ function BuySection({ tokenId, price, onSuccess }: BuySectionProps) {
           <button
             type="button"
             onClick={() => setStep("approve")}
-            className="w-fit text-xs underline opacity-60 hover:opacity-80"
+            className={cx(buttonClasses("ghost", "sm"), "text-on-panel-muted hover:text-on-panel")}
           >
-            ← Back to approve
+            Back to approve
           </button>
         </div>
       )}
-    </div>
+    </Panel>
   );
 }
 
@@ -226,15 +260,19 @@ function CancelSection({ tokenId, onSuccess }: CancelSectionProps) {
   } as const;
 
   return (
-    <div className="flex flex-col gap-2 rounded-lg border border-red-100 bg-red-50 p-4">
-      <h3 className="font-semibold text-red-800">Cancel listing</h3>
-      <p className="text-xs text-red-700">Remove this card from the marketplace. The card returns to your wallet.</p>
+    <Panel variant="outline" className="flex flex-col gap-3 border-danger/35 p-5">
+      <div>
+        <p className="display text-lg text-danger">Cancel listing</p>
+        <p className="mt-1 text-xs text-muted">
+          Remove this card from the marketplace. It returns to your wallet.
+        </p>
+      </div>
       <TxButton
         request={cancelRequest}
         label="Cancel listing"
         onSuccess={onSuccess}
       />
-    </div>
+    </Panel>
   );
 }
 
@@ -293,23 +331,46 @@ export default function MarketDetailPage({
 
   const handleRefresh = () => setRefreshKey((k) => k + 1);
 
+  // ── Loading state ────────────────────────────────────────────────────────
   if (loading) {
     return (
-      <main className="flex max-w-xl flex-col gap-4">
-        <p className="opacity-60">Loading card data…</p>
+      <main className="flex max-w-3xl flex-col gap-8">
+        <Link
+          href="/market"
+          className={cx(buttonClasses("ghost", "sm"), "self-start")}
+        >
+          ← Marketplace
+        </Link>
+        <div className="grid gap-8 sm:grid-cols-[auto_1fr]">
+          <Skeleton className="h-64 w-48 rounded-card" />
+          <div className="flex flex-col gap-4">
+            <Skeleton className="h-8 w-48 rounded-sm" />
+            <Skeleton className="h-4 w-64 rounded-sm" />
+            <Skeleton className="h-32 w-full rounded-card" />
+            <Skeleton className="h-24 w-full rounded-card" />
+          </div>
+        </div>
       </main>
     );
   }
 
+  // ── Error state ──────────────────────────────────────────────────────────
   if (error) {
     return (
-      <main className="flex max-w-xl flex-col gap-4">
-        <Link href="/market" className="text-sm underline opacity-70">
-          ← Back to marketplace
+      <main className="flex max-w-3xl flex-col gap-6">
+        <Link
+          href="/market"
+          className={cx(buttonClasses("ghost", "sm"), "self-start")}
+        >
+          ← Marketplace
         </Link>
-        <p className="rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div
+          role="alert"
+          className="flex items-start gap-3 rounded-card border border-danger/30 bg-danger/8 px-4 py-3 text-sm text-danger"
+        >
+          <span aria-hidden className="mt-0.5 shrink-0">!</span>
           {error}
-        </p>
+        </div>
       </main>
     );
   }
@@ -320,101 +381,156 @@ export default function MarketDetailPage({
   const name = player?.name ?? `Player ${data.playerId.slice(0, 10)}…`;
   const tierLabel = TIER_NAME[data.tier];
   const traits = traitsOf(data.playerId);
+  const tierId = data.tier as TierId;
+
+  // Map nation/position to PlayerCard props
+  const nation = (player?.nation ?? "FRA") as Nation;
+  const position = (player?.position ?? "MID") as Position;
 
   const isOwner = address != null && address.toLowerCase() === data.seller.toLowerCase();
   const isBuyer = address != null && !isOwner;
 
   return (
-    <main className="flex max-w-2xl flex-col gap-6">
-      <Link href="/market" className="text-sm underline opacity-70">
-        ← Back to marketplace
+    <main className="flex max-w-3xl flex-col gap-8">
+      <Link
+        href="/market"
+        className={cx(buttonClasses("ghost", "sm"), "self-start")}
+      >
+        ← Marketplace
       </Link>
 
-      {/* Card header */}
-      <header className="flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-zinc-900">{name}</h1>
-          <p className="text-sm text-zinc-500">
-            Token #{tokenIdStr} · Serial {data.serial} · Batch {data.mintBatch}
-          </p>
+      {/* ── Two-column layout: card + detail panel ── */}
+      <div className="grid gap-8 sm:grid-cols-[auto_1fr]">
+        {/* Large card */}
+        <div className="flex flex-col items-start gap-3">
+          <PlayerCard
+            name={name}
+            nation={nation}
+            position={position}
+            tier={tierId}
+            stats={data.stats}
+            className="w-52"
+          />
+          {traits.length > 0 && (
+            <div className="flex flex-wrap gap-1.5" aria-label="Player traits">
+              {traits.map((t) => (
+                <Pill key={t} tone="cobalt">{t}</Pill>
+              ))}
+            </div>
+          )}
         </div>
-        <span className="rounded bg-zinc-100 px-3 py-1 text-sm font-semibold text-zinc-700">
-          {tierLabel}
-        </span>
-      </header>
 
-      {/* Stats */}
-      <section className="rounded-lg border border-zinc-200 bg-white p-4">
-        <h2 className="mb-3 text-sm font-semibold text-zinc-700">Stats</h2>
-        <div className="flex flex-col gap-2">
-          <StatRow label="Pace" value={data.stats.pace} />
-          <StatRow label="Shooting" value={data.stats.shooting} />
-          <StatRow label="Passing" value={data.stats.passing} />
-          <StatRow label="Defense" value={data.stats.defense} />
-          <StatRow label="Physical" value={data.stats.physical} />
-        </div>
-      </section>
+        {/* Detail panel */}
+        <div className="flex flex-col gap-5">
+          {/* Identity row */}
+          <div className="flex flex-wrap items-start gap-3">
+            <div className="flex-1 min-w-0">
+              <h1 className="display text-3xl text-ink">{name}</h1>
+              <p className="mt-1 font-mono text-xs text-muted">
+                Token #{tokenIdStr} · Serial {data.serial} · Batch {data.mintBatch}
+              </p>
+            </div>
+            <TierBadge tier={tierId} />
+          </div>
 
-      {/* Traits */}
-      {traits.length > 0 && (
-        <section className="flex gap-2">
-          {traits.map((t) => (
-            <span
-              key={t}
-              className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-800"
+          {/* Stats */}
+          <Panel variant="sunken" className="flex flex-col gap-3 p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+              Attributes
+            </p>
+            <div className="flex flex-col gap-2.5">
+              <StatRow label="Pace" value={data.stats.pace} />
+              <StatRow label="Shooting" value={data.stats.shooting} />
+              <StatRow label="Passing" value={data.stats.passing} />
+              <StatRow label="Defense" value={data.stats.defense} />
+              <StatRow label="Physical" value={data.stats.physical} />
+            </div>
+          </Panel>
+
+          {/* On-chain metadata */}
+          <Panel variant="paper" className="p-4">
+            <p className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+              On-chain info
+            </p>
+            <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+              <div>
+                <dt className="text-muted">Seller</dt>
+                <dd className="mt-0.5 truncate font-mono text-ink-2" title={data.seller}>
+                  {data.seller.slice(0, 6)}…{data.seller.slice(-4)}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-muted">Rental</dt>
+                <dd className="mt-0.5">
+                  {data.rentalActive ? (
+                    <Pill tone="warn">Active rental</Pill>
+                  ) : (
+                    <span className="text-muted">Not listed</span>
+                  )}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-muted">Listing status</dt>
+                <dd className="mt-0.5">
+                  {data.isListed ? (
+                    <Pill tone="ok">Listed</Pill>
+                  ) : (
+                    <Pill tone="neutral">Unlisted</Pill>
+                  )}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-muted">Tier</dt>
+                <dd className="mt-0.5 text-ink-2">{tierLabel}</dd>
+              </div>
+            </dl>
+          </Panel>
+
+          {/* ── Actions ── */}
+
+          {/* Not connected: price info + prompt */}
+          {!address && data.isListed && (
+            <Panel variant="paper" className="flex items-center justify-between gap-4 p-4">
+              <div>
+                <p className="text-xs text-muted">Listed at</p>
+                <p className="display text-2xl tabular-nums text-ink">
+                  {fmtUsdc(data.price)}
+                  <span className="ml-1 font-sans text-sm font-semibold text-muted">USDC</span>
+                </p>
+              </div>
+              <p className="text-sm text-muted">Connect your wallet to buy.</p>
+            </Panel>
+          )}
+
+          {!address && (
+            <div
+              role="status"
+              className="rounded-card border border-warn/35 bg-warn/10 px-4 py-3 text-sm text-ink-2"
             >
-              {t}
-            </span>
-          ))}
-        </section>
-      )}
+              Connect your wallet to buy or list this card.
+            </div>
+          )}
 
-      {/* Rental availability */}
-      <section className="rounded-lg border border-zinc-200 bg-white p-4">
-        <h2 className="mb-1 text-sm font-semibold text-zinc-700">Rental status</h2>
-        {data.rentalActive ? (
-          <p className="text-sm text-amber-700">
-            This card is currently listed for rent on the rental market.
-          </p>
-        ) : (
-          <p className="text-sm text-zinc-500">Not available for rent.</p>
-        )}
-      </section>
+          {/* Owner, not listed: show list form */}
+          {address && !data.isListed && isOwner && (
+            <ListSection tokenId={tokenId} onSuccess={handleRefresh} />
+          )}
 
-      {/* Listing / buy actions */}
-      {!address && (
-        <p className="rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          Connect your wallet to buy or list this card.
-        </p>
-      )}
+          {/* Owner, listed: show cancel */}
+          {address && data.isListed && isOwner && (
+            <CancelSection tokenId={tokenId} onSuccess={handleRefresh} />
+          )}
 
-      {address && !data.isListed && isOwner && (
-        <ListSection tokenId={tokenId} onSuccess={handleRefresh} />
-      )}
-
-      {address && data.isListed && isOwner && (
-        <CancelSection tokenId={tokenId} onSuccess={handleRefresh} />
-      )}
-
-      {address && data.isListed && isBuyer && (
-        <BuySection
-          tokenId={tokenId}
-          price={data.price}
-          onSuccess={handleRefresh}
-        />
-      )}
-
-      {data.isListed && !address && (
-        <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-4">
-          <p className="text-sm">
-            Listed for{" "}
-            <strong className="text-emerald-700">{fmtUsdc(data.price)} USDC</strong>
-          </p>
-          <p className="mt-1 text-xs text-zinc-500">
-            Royalty note (FR-M3): 4% platform fee + 1% to original first buyer on every sale.
-          </p>
+          {/* Buyer: show buy flow */}
+          {address && data.isListed && isBuyer && (
+            <BuySection
+              tokenId={tokenId}
+              price={data.price}
+              onSuccess={handleRefresh}
+            />
+          )}
         </div>
-      )}
+      </div>
     </main>
   );
 }

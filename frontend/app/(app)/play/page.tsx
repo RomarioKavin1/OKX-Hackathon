@@ -10,6 +10,16 @@ import { FORMATIONS, LINEUP_SIZE } from "@/lib/constants";
 import { validateLineup } from "@/lib/business/lineup";
 import type { LineupDraft } from "@/lib/business/lineup";
 import { ChipId } from "@/lib/types";
+import {
+  Button,
+  buttonClasses,
+  Panel,
+  Pill,
+  SectionHeading,
+  Skeleton,
+  EmptyState,
+  cx,
+} from "@/components/ui";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -20,7 +30,7 @@ interface PortfolioCard {
   state: string;
 }
 
-// ── Module-scope sub-components (avoid "components created during render") ───
+// ── Module-scope sub-components ───────────────────────────────────────────────
 
 interface SlotSelectProps {
   slotIndex: number;
@@ -30,16 +40,25 @@ interface SlotSelectProps {
   onSelect: (slotIndex: number, tokenId: string) => void;
 }
 
+const FORM_CONTROL =
+  "rounded-sm border border-line-2 bg-paper-2 text-ink px-3 h-10 text-sm focus-visible:outline-2 focus-visible:outline-cobalt";
+
 function SlotSelect({ slotIndex, position, selectedTokenId, cards, onSelect }: SlotSelectProps) {
   return (
-    <div className="flex items-center gap-2">
-      <span className="w-10 text-xs font-bold text-zinc-500">{position}</span>
+    <div className="flex items-center gap-3">
+      <span
+        className="w-10 shrink-0 rounded-xs bg-paper-3 px-1.5 py-0.5 text-center text-[11px] font-semibold uppercase tracking-wide text-muted"
+        aria-hidden
+      >
+        {position}
+      </span>
       <select
-        className="flex-1 rounded border border-zinc-300 bg-white px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-400"
+        aria-label={`Slot ${slotIndex + 1} — ${position}`}
+        className={cx(FORM_CONTROL, "flex-1")}
         value={selectedTokenId}
         onChange={(e) => onSelect(slotIndex, e.target.value)}
       >
-        <option value="">— pick a card —</option>
+        <option value="">Pick a card</option>
         {cards.map((c) => (
           <option key={c.tokenId} value={c.tokenId}>
             #{c.tokenId.slice(-6)} · Tier {c.tier} · {c.playerId.slice(0, 10)}
@@ -99,7 +118,6 @@ export default function PlayPage() {
   const [viceIdx, setViceIdx] = useState(1);
   const [chipId, setChipId] = useState<ChipId>(ChipId.None);
 
-  // Reset slots when formation changes (slot count is always 11 but positions change)
   const handleFormationChange = (idx: number) => {
     setFormationIndex(idx);
     setSlotTokenIds(Array(LINEUP_SIZE).fill(""));
@@ -127,8 +145,6 @@ export default function PlayPage() {
     ? validateLineup(
         draft,
         address,
-        // controllerOf: if the tokenId is in the controllable set we return the wallet address,
-        // otherwise a zero address so the validator rejects it.
         (tokenId) =>
           controllableSet.has(tokenId.toString())
             ? address
@@ -136,12 +152,8 @@ export default function PlayPage() {
       )
     : { ok: false, errors: ["No wallet connected"] };
 
-  // All 11 slots filled
   const allFilled = slotTokenIds.every((id) => id !== "");
 
-  // ── TxButton request for commitLineup ──────────────────────────────────────
-  // args: [matchday (uint256), tokenIds (uint256[]), formation (uint8), captainIdx (uint8), viceIdx (uint8), chipId (uint8)]
-  // Mirrors writes.ts commitLineup arg order exactly.
   const commitRequest = {
     address: ADDRESSES.GameRegistry,
     abi: ABIS.GameRegistry,
@@ -158,7 +170,6 @@ export default function PlayPage() {
 
   const formation = FORMATIONS[formationIndex];
 
-  // ── Chip options ───────────────────────────────────────────────────────────
   const CHIP_OPTIONS: { label: string; value: ChipId }[] = [
     { label: "None", value: ChipId.None },
     { label: "Triple Captain", value: ChipId.TripleCaptain },
@@ -168,174 +179,218 @@ export default function PlayPage() {
   ];
 
   const needsMoreCards = !loadingCards && cards.length < LINEUP_SIZE;
+  const filledCount = slotTokenIds.filter(Boolean).length;
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <main className="flex max-w-2xl flex-col gap-6">
-      <header>
-        <h1 className="text-2xl font-bold">Pick your lineup</h1>
-        <p className="text-sm opacity-70">Commit your squad for a matchday to earn points.</p>
-      </header>
-
-      {!address && (
-        <p className="rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          Connect your wallet to build a lineup.
-        </p>
-      )}
-
-      {/* Matchday selector */}
-      <section className="flex items-center gap-3">
-        <label className="text-sm font-medium" htmlFor="matchday-select">
-          Matchday
-        </label>
-        <select
-          id="matchday-select"
-          className="rounded border border-zinc-300 bg-white px-3 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-400"
-          value={matchday}
-          onChange={(e) => setMatchday(Number(e.target.value))}
-        >
-          {[1, 2, 3, 4, 5, 6, 7].map((d) => (
-            <option key={d} value={d}>
-              Matchday {d}
-            </option>
-          ))}
-        </select>
-      </section>
-
-      {/* Cards loading state */}
-      {loadingCards && <p className="text-sm opacity-60">Loading your cards…</p>}
-      {cardsError && (
-        <p className="rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          Could not load cards: {cardsError}
-        </p>
-      )}
-
-      {/* Not enough cards CTA */}
-      {needsMoreCards && address && (
-        <div className="rounded border border-amber-200 bg-amber-50 px-4 py-3">
-          <p className="text-sm text-amber-800">
-            You need {LINEUP_SIZE} controllable cards to commit a lineup. You currently have{" "}
-            <strong>{cards.length}</strong>.
-          </p>
-          <Link
-            href="/rentals"
-            className="mt-2 inline-block text-sm font-medium text-amber-900 underline"
-          >
-            Rent more cards →
+    <main className="flex max-w-2xl flex-col gap-8">
+      {/* Page heading */}
+      <SectionHeading
+        kicker="Matchday lineup"
+        title="Pick your squad"
+        action={
+          <Link href="/play/builder" className={buttonClasses("secondary", "sm")}>
+            Open full builder
           </Link>
-        </div>
+        }
+      />
+
+      {/* No wallet notice */}
+      {!address && (
+        <Panel variant="outline" className="px-4 py-3">
+          <p className="text-sm text-ink-2">Connect your wallet to build a lineup.</p>
+        </Panel>
       )}
 
-      {/* Formation picker */}
-      <section className="flex items-center gap-3">
-        <label className="text-sm font-medium" htmlFor="formation-select">
-          Formation
-        </label>
-        <select
-          id="formation-select"
-          className="rounded border border-zinc-300 bg-white px-3 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-400"
-          value={formationIndex}
-          onChange={(e) => handleFormationChange(Number(e.target.value))}
-        >
-          {FORMATIONS.map((f, i) => (
-            <option key={f.name} value={i}>
-              {f.name}
-            </option>
-          ))}
-        </select>
-      </section>
+      {/* Matchday + formation row */}
+      <Panel variant="paper" className="p-5">
+        <div className="flex flex-wrap items-center gap-5">
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-semibold uppercase tracking-[0.14em] text-muted" htmlFor="matchday-select">
+              Matchday
+            </label>
+            <select
+              id="matchday-select"
+              className={FORM_CONTROL}
+              value={matchday}
+              onChange={(e) => setMatchday(Number(e.target.value))}
+            >
+              {[1, 2, 3, 4, 5, 6, 7].map((d) => (
+                <option key={d} value={d}>
+                  Matchday {d}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-semibold uppercase tracking-[0.14em] text-muted" htmlFor="formation-select">
+              Formation
+            </label>
+            <select
+              id="formation-select"
+              className={FORM_CONTROL}
+              value={formationIndex}
+              onChange={(e) => handleFormationChange(Number(e.target.value))}
+            >
+              {FORMATIONS.map((f, i) => (
+                <option key={f.name} value={i}>
+                  {f.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Squad readiness indicator */}
+          <div className="ml-auto flex flex-col items-end gap-1.5">
+            <span className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+              Squad
+            </span>
+            {loadingCards ? (
+              <Skeleton className="h-7 w-16" />
+            ) : (
+              <Pill tone={filledCount === LINEUP_SIZE ? "ok" : filledCount > 0 ? "warn" : "neutral"}>
+                {filledCount}/{LINEUP_SIZE} filled
+              </Pill>
+            )}
+          </div>
+        </div>
+      </Panel>
+
+      {/* Cards error */}
+      {cardsError && (
+        <Pill tone="danger" className="px-4 py-2 rounded-sm text-xs">
+          Could not load cards: {cardsError}
+        </Pill>
+      )}
+
+      {/* Not enough cards */}
+      {needsMoreCards && address && (
+        <EmptyState
+          icon="🃏"
+          title="Not enough cards"
+          hint={`You need ${LINEUP_SIZE} controllable cards to commit a lineup. You currently have ${cards.length}.`}
+          action={
+            <Link href="/rentals" className={buttonClasses("secondary", "sm")}>
+              Rent cards
+            </Link>
+          }
+        />
+      )}
 
       {/* Slot selectors */}
-      <section className="flex flex-col gap-2">
-        <h2 className="text-sm font-semibold">Assign cards to positions</h2>
-        {formation.slots.map((pos, i) => (
-          <SlotSelect
-            key={i}
-            slotIndex={i}
-            position={pos}
-            selectedTokenId={slotTokenIds[i]}
-            cards={cards}
-            onSelect={handleSlotSelect}
-          />
-        ))}
-      </section>
+      {!needsMoreCards && (
+        <Panel variant="paper" className="p-5">
+          <h2 className="mb-4 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+            Assign cards to positions
+          </h2>
+          <div className="flex flex-col gap-2.5">
+            {loadingCards
+              ? Array.from({ length: LINEUP_SIZE }, (_, i) => (
+                  <Skeleton key={i} className="h-10 w-full" />
+                ))
+              : formation.slots.map((pos, i) => (
+                  <SlotSelect
+                    key={i}
+                    slotIndex={i}
+                    position={pos}
+                    selectedTokenId={slotTokenIds[i]}
+                    cards={cards}
+                    onSelect={handleSlotSelect}
+                  />
+                ))}
+          </div>
+        </Panel>
+      )}
 
       {/* Captain + Vice pickers */}
       {allFilled && (
-        <section className="flex flex-col gap-3">
-          <div className="flex items-center gap-3">
-            <label className="w-24 text-sm font-medium" htmlFor="captain-select">
-              Captain
-            </label>
-            <select
-              id="captain-select"
-              className="rounded border border-zinc-300 bg-white px-3 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-400"
-              value={captainIdx}
-              onChange={(e) => setCaptainIdx(Number(e.target.value))}
-            >
-              {slotTokenIds.map((id, i) => (
-                <option key={i} value={i} disabled={i === viceIdx}>
-                  Slot {i + 1} — {formation.slots[i]} #{id.slice(-6)}
-                </option>
-              ))}
-            </select>
+        <Panel variant="paper" className="p-5">
+          <h2 className="mb-4 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+            Armband
+          </h2>
+          <div className="flex flex-col gap-3 sm:flex-row sm:gap-5">
+            <div className="flex flex-1 flex-col gap-1.5">
+              <label className="text-xs font-semibold uppercase tracking-[0.14em] text-muted" htmlFor="captain-select">
+                Captain
+              </label>
+              <select
+                id="captain-select"
+                className={FORM_CONTROL}
+                value={captainIdx}
+                onChange={(e) => setCaptainIdx(Number(e.target.value))}
+              >
+                {slotTokenIds.map((id, i) => (
+                  <option key={i} value={i} disabled={i === viceIdx}>
+                    Slot {i + 1} — {formation.slots[i]} #{id.slice(-6)}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex flex-1 flex-col gap-1.5">
+              <label className="text-xs font-semibold uppercase tracking-[0.14em] text-muted" htmlFor="vice-select">
+                Vice Captain
+              </label>
+              <select
+                id="vice-select"
+                className={FORM_CONTROL}
+                value={viceIdx}
+                onChange={(e) => setViceIdx(Number(e.target.value))}
+              >
+                {slotTokenIds.map((id, i) => (
+                  <option key={i} value={i} disabled={i === captainIdx}>
+                    Slot {i + 1} — {formation.slots[i]} #{id.slice(-6)}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
-          <div className="flex items-center gap-3">
-            <label className="w-24 text-sm font-medium" htmlFor="vice-select">
-              Vice Captain
-            </label>
-            <select
-              id="vice-select"
-              className="rounded border border-zinc-300 bg-white px-3 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-400"
-              value={viceIdx}
-              onChange={(e) => setViceIdx(Number(e.target.value))}
-            >
-              {slotTokenIds.map((id, i) => (
-                <option key={i} value={i} disabled={i === captainIdx}>
-                  Slot {i + 1} — {formation.slots[i]} #{id.slice(-6)}
-                </option>
-              ))}
-            </select>
-          </div>
-        </section>
+        </Panel>
       )}
 
       {/* Chip selector */}
-      <section className="flex items-center gap-3">
-        <label className="text-sm font-medium" htmlFor="chip-select">
-          Chip
-        </label>
-        <select
-          id="chip-select"
-          className="rounded border border-zinc-300 bg-white px-3 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-400"
-          value={chipId}
-          onChange={(e) => setChipId(Number(e.target.value) as ChipId)}
-        >
-          {CHIP_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
-            </option>
-          ))}
-        </select>
-      </section>
+      <Panel variant="paper" className="p-5">
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs font-semibold uppercase tracking-[0.14em] text-muted" htmlFor="chip-select">
+            Chip
+          </label>
+          <select
+            id="chip-select"
+            className={FORM_CONTROL}
+            value={chipId}
+            onChange={(e) => setChipId(Number(e.target.value) as ChipId)}
+          >
+            {CHIP_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      </Panel>
 
       {/* Validation errors */}
       {allFilled && !validation.ok && (
-        <section className="rounded border border-red-200 bg-red-50 p-3">
-          <p className="mb-1 text-xs font-semibold text-red-700">Lineup errors:</p>
-          <ul className="list-inside list-disc space-y-0.5">
+        <section aria-label="Lineup validation errors">
+          <div className="flex flex-col gap-1.5">
             {validation.errors.map((err, i) => (
-              <li key={i} className="text-xs text-red-600">
+              <Pill key={i} tone="danger" className="w-fit px-3 py-1 text-xs">
                 {err}
-              </li>
+              </Pill>
             ))}
-          </ul>
+          </div>
         </section>
       )}
 
-      {/* Commit button — only if enough cards, all filled, and validation passes */}
+      {/* Commit section */}
       {!needsMoreCards && allFilled && validation.ok && address && (
-        <section>
+        <Panel variant="ink" className="p-5">
+          <div className="mb-3 flex items-center justify-between">
+            <p className="text-sm font-semibold text-on-panel">
+              Ready to commit
+            </p>
+            <Pill tone="cobalt">Matchday {matchday}</Pill>
+          </div>
           <TxButton
             request={commitRequest}
             label={`Commit lineup — Matchday ${matchday}`}
@@ -343,12 +398,12 @@ export default function PlayPage() {
               console.info("LineupCommitted tx:", hash);
             }}
           />
-        </section>
+        </Panel>
       )}
 
-      {/* No-wallet fallback */}
+      {/* No-wallet fallback when all slots filled */}
       {!address && allFilled && (
-        <p className="text-sm opacity-60">Connect a wallet to commit this lineup.</p>
+        <p className="text-sm text-muted">Connect a wallet to commit this lineup.</p>
       )}
     </main>
   );

@@ -26,6 +26,13 @@ import { packCommit, usdcAllowance } from "@/lib/actions/reads";
 import { fmtUsdc } from "@/lib/business/format";
 import { PACK_NAME, PACK_TIER_CUM, PACK_REVEAL_DELAY_BLOCKS } from "@/lib/constants";
 import { Tier, TIER_NAME } from "@/lib/types";
+import {
+  Panel,
+  Pill,
+  SectionHeading,
+  Skeleton,
+  cx,
+} from "@/components/ui";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -58,41 +65,68 @@ function pullRates(packType: number): Record<Tier, number> {
 
 const TIER_ORDER = [Tier.Common, Tier.Rare, Tier.SuperRare, Tier.Unique] as const;
 
+/** Rarity tone per tier — matches TIER_META in ui.tsx */
+const TIER_PILL_TONE = {
+  [Tier.Common]:    "neutral",
+  [Tier.Rare]:      "cobalt",
+  [Tier.SuperRare]: "violet",
+  [Tier.Unique]:    "gold",
+} as const;
+
+/**
+ * Visual identity per pack tier:
+ * Bronze = warm/muted, Silver = cobalt, Gold = gold + foil accent
+ */
+const PACK_ACCENT = {
+  0: { kicker: "BRONZE",  tone: "neutral" as const, foil: false },
+  1: { kicker: "SILVER",  tone: "cobalt"  as const, foil: false },
+  2: { kicker: "GOLD",    tone: "gold"    as const, foil: true  },
+} as const;
+
 // ── Module-scope sub-components ───────────────────────────────────────────────
 
-interface PullRateBarProps {
-  packType: number;
+interface OddsRowProps {
+  tier: Tier;
+  pct: number;
 }
 
-function PullRateBar({ packType }: PullRateBarProps) {
-  const rates = pullRates(packType);
+function OddsRow({ tier, pct }: OddsRowProps) {
   return (
-    <div className="mt-2 flex flex-col gap-1">
-      {TIER_ORDER.map((tier) => {
-        const pct = rates[tier];
-        if (pct <= 0) return null;
-        return (
-          <div key={tier} className="flex items-center gap-2 text-xs">
-            {/* Label + pattern (color-blind safe: uses label + width, not hue alone) */}
-            <span className="w-20 text-right font-medium text-zinc-400">
-              {TIER_NAME[tier]}
-            </span>
-            <div className="flex-1 rounded bg-zinc-700" aria-label={`${TIER_NAME[tier]} ${pct.toFixed(2)}%`}>
-              <div
-                className="h-2 rounded bg-emerald-500"
-                style={{ width: `${Math.min(pct, 100)}%` }}
-              />
-            </div>
-            <span className="w-14 text-zinc-300">{pct.toFixed(2)}%</span>
-          </div>
-        );
-      })}
+    <div className="flex items-center gap-3">
+      <Pill tone={TIER_PILL_TONE[tier]} className="w-24 justify-center shrink-0">
+        {tier === Tier.Unique && <span aria-hidden>✦</span>}
+        {TIER_NAME[tier]}
+      </Pill>
+      <div
+        className="relative h-1.5 flex-1 rounded-full bg-paper-3 overflow-hidden"
+        role="presentation"
+      >
+        <div
+          className={cx(
+            "absolute inset-y-0 left-0 rounded-full",
+            tier === Tier.Unique
+              ? "bg-gold"
+              : tier === Tier.SuperRare
+              ? "bg-violet"
+              : tier === Tier.Rare
+              ? "bg-cobalt"
+              : "bg-muted",
+          )}
+          style={{ width: `${Math.min(pct, 100)}%` }}
+        />
+      </div>
+      <span
+        className="w-12 text-right text-xs tabular-nums text-muted"
+        aria-label={`${TIER_NAME[tier]} pull rate: ${pct.toFixed(2)} percent`}
+      >
+        {pct.toFixed(2)}%
+      </span>
     </div>
   );
 }
 
 interface PackCardProps {
-  packType: number;
+  packType: 0 | 1 | 2;
   price: bigint | null;
   address: Address | undefined;
   onBuySuccess: (hash: Hex, packType: number) => void;
@@ -100,6 +134,8 @@ interface PackCardProps {
 
 function PackCard({ packType, price, address, onBuySuccess }: PackCardProps) {
   const packName = PACK_NAME[packType] ?? `Pack ${packType}`;
+  const accent = PACK_ACCENT[packType];
+  const rates = pullRates(packType);
 
   const approveRequest = price != null ? {
     address: ADDRESSES.MockUSDC,
@@ -120,48 +156,98 @@ function PackCard({ packType, price, address, onBuySuccess }: PackCardProps) {
   }, [onBuySuccess, packType]);
 
   return (
-    <div className="flex flex-col gap-4 rounded-xl border border-zinc-200 bg-white p-5 shadow-sm">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-bold">{packName} Pack</h2>
-        <span className="rounded-full bg-zinc-100 px-3 py-0.5 text-sm font-medium text-zinc-700">
-          {price != null ? `${fmtUsdc(price)} USDC` : "…"}
-        </span>
+    <Panel
+      variant="paper"
+      className={cx(
+        "relative flex flex-col gap-5 overflow-hidden p-5 transition-[transform,box-shadow] duration-200 [transition-timing-function:var(--ease-out-expo)] hover:-translate-y-0.5 hover:shadow-lift",
+        accent.foil && "foil-sheen",
+      )}
+    >
+      {/* Gold pack: foil accent strip across the top edge */}
+      {accent.foil && (
+        <div aria-hidden className="foil absolute inset-x-0 top-0 h-1 opacity-80" />
+      )}
+
+      {/* Pack header */}
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p
+            className={cx(
+              "mb-1 text-xs font-semibold uppercase tracking-[0.18em]",
+              accent.tone === "gold"
+                ? "text-gold"
+                : accent.tone === "cobalt"
+                ? "text-cobalt-ink"
+                : "text-muted",
+            )}
+          >
+            {accent.kicker}
+          </p>
+          <h2
+            className="display text-3xl text-ink"
+            aria-label={`${packName} Pack`}
+          >
+            {packName}
+          </h2>
+        </div>
+
+        {/* Price badge */}
+        <div className="mt-1 shrink-0">
+          {price != null ? (
+            <span className="display text-xl text-ink tabular-nums">
+              {fmtUsdc(price)}{" "}
+              <span className="text-sm font-[var(--font-sans)] tracking-normal text-muted">USDC</span>
+            </span>
+          ) : (
+            <Skeleton className="h-7 w-20" />
+          )}
+        </div>
       </div>
 
-      {/* Pull rates */}
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">
-          Pull rates (5 cards)
+      {/* Pull-rate odds */}
+      <section aria-label={`${packName} pack pull rates`}>
+        <p className="mb-2.5 text-xs font-semibold uppercase tracking-[0.15em] text-muted">
+          5-card pull rates
         </p>
-        <PullRateBar packType={packType} />
-      </div>
+        <div className="flex flex-col gap-2">
+          {TIER_ORDER.map((tier) => {
+            const pct = rates[tier];
+            if (pct <= 0) return null;
+            return <OddsRow key={tier} tier={tier} pct={pct} />;
+          })}
+        </div>
+      </section>
+
+      {/* Divider */}
+      <hr className="border-line" />
 
       {/* Buy flow */}
-      {!address ? (
-        <p className="text-xs text-amber-700">Connect a wallet to buy packs.</p>
-      ) : price == null ? (
-        <p className="text-xs text-zinc-400">Loading price…</p>
-      ) : (
-        <div className="flex flex-col gap-2">
-          <p className="text-xs text-zinc-500">
-            Step 1 — Approve <strong>{fmtUsdc(price)} USDC</strong> for PackSale
-          </p>
-          {approveRequest && (
+      <div className="flex flex-col gap-2">
+        {!address ? (
+          <p className="text-xs text-warn">Connect a wallet to buy packs.</p>
+        ) : price == null ? (
+          <p className="text-xs text-muted">Loading price...</p>
+        ) : (
+          <>
+            <p className="text-xs text-muted">
+              Step 1 — Approve <strong className="text-ink">{fmtUsdc(price)} USDC</strong> for PackSale
+            </p>
+            {approveRequest && (
+              <TxButton
+                request={approveRequest}
+                label={`Approve ${fmtUsdc(price)} USDC`}
+              />
+            )}
+            <p className="text-xs text-muted">Step 2 — Buy pack</p>
             <TxButton
-              request={approveRequest}
-              label={`Approve ${fmtUsdc(price)} USDC`}
+              request={buyRequest}
+              label={`Buy ${packName} Pack`}
+              onSuccess={handleBuy}
             />
-          )}
-          <p className="text-xs text-zinc-500">Step 2 — Buy pack</p>
-          <TxButton
-            request={buyRequest}
-            label={`Buy ${packName} Pack`}
-            onSuccess={handleBuy}
-          />
-        </div>
-      )}
-    </div>
+          </>
+        )}
+      </div>
+    </Panel>
   );
 }
 
@@ -212,20 +298,23 @@ function RevealSection({ commit, onRevealSuccess, onDismiss }: RevealSectionProp
   );
 
   return (
-    <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-5">
-      <div className="mb-3 flex items-start justify-between gap-4">
+    <Panel variant="ink" className="p-5">
+      <div className="mb-4 flex items-start justify-between gap-4">
         <div>
-          <p className="font-semibold text-emerald-800">
-            {PACK_NAME[commit.packType] ?? "Pack"} pack pending reveal
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-on-panel-muted">
+            Pending reveal
           </p>
-          <p className="text-xs text-emerald-700 font-mono">
+          <p className="display mt-1 text-xl text-on-panel">
+            {PACK_NAME[commit.packType] ?? "Pack"} Pack
+          </p>
+          <p className="mt-0.5 font-mono text-xs text-on-panel-muted">
             Commit #{commit.commitId.toString()}
           </p>
         </div>
         <button
           type="button"
           onClick={onDismiss}
-          className="text-xs text-zinc-400 underline hover:text-zinc-600"
+          className="text-xs text-on-panel-muted underline underline-offset-2 hover:text-on-panel focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cobalt"
           aria-label="Dismiss this pending commit"
         >
           dismiss
@@ -233,14 +322,14 @@ function RevealSection({ commit, onRevealSuccess, onDismiss }: RevealSectionProp
       </div>
 
       {!canReveal ? (
-        <p className="mb-3 text-sm text-emerald-700">
+        <p className="mb-4 text-sm text-on-panel-muted">
           {blocksLeft != null
-            ? `Waiting for ${PACK_REVEAL_DELAY_BLOCKS}-block commit delay… ${blocksLeft} block${blocksLeft !== 1 ? "s" : ""} left`
-            : "Checking block height…"}
+            ? `Waiting for ${PACK_REVEAL_DELAY_BLOCKS}-block commit delay... ${blocksLeft} block${blocksLeft !== 1 ? "s" : ""} left`
+            : "Checking block height..."}
         </p>
       ) : (
-        <p className="mb-3 text-sm font-medium text-emerald-800">
-          Ready to reveal! Commit block reached.
+        <p className="mb-4 text-sm font-semibold text-ok">
+          Commit block reached. Ready to reveal.
         </p>
       )}
 
@@ -250,7 +339,7 @@ function RevealSection({ commit, onRevealSuccess, onDismiss }: RevealSectionProp
         disabled={!canReveal}
         onSuccess={handleReveal}
       />
-    </div>
+    </Panel>
   );
 }
 
@@ -420,20 +509,24 @@ export default function PacksPage() {
         />
       )}
 
-      <main className="flex max-w-4xl flex-col gap-6">
-        <header>
-          <h1 className="text-2xl font-bold">Packs</h1>
-          <p className="text-sm opacity-70">
+      <main className="flex max-w-4xl flex-col gap-8">
+        {/* Page header */}
+        <SectionHeading
+          kicker="Collector shop"
+          title="Packs"
+        />
+
+        {/* Subhead + context strip */}
+        <Panel variant="sunken" className="flex flex-col gap-1 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-ink-2">
             Buy a pack, wait {PACK_REVEAL_DELAY_BLOCKS} blocks, then reveal 5 random cards.
           </p>
-        </header>
-
-        {/* USDC allowance info */}
-        {address && allowance != null && allowance > 0n && (
-          <p className="text-xs text-zinc-500">
-            Current PackSale allowance: <strong>{fmtUsdc(allowance)} USDC</strong>
-          </p>
-        )}
+          {address && allowance != null && allowance > 0n && (
+            <p className="text-xs text-muted">
+              PackSale allowance: <span className="font-semibold text-ink">{fmtUsdc(allowance)} USDC</span>
+            </p>
+          )}
+        </Panel>
 
         {/* Pending reveal section */}
         {pendingCommit && (
@@ -460,11 +553,11 @@ export default function PacksPage() {
           ))}
         </section>
 
-        {/* Transparency note */}
-        <p className="text-xs text-zinc-400">
+        {/* Transparency footnote */}
+        <p className="text-xs text-muted">
           Pull rates are derived from on-chain{" "}
-          <code className="font-mono">tierCum</code> values stored in the PackSale
-          contract and mirror the constants in <code>lib/constants.ts</code>.
+          <code className="font-mono text-ink-2">tierCum</code> values stored in the PackSale
+          contract and mirror the constants in <code className="font-mono text-ink-2">lib/constants.ts</code>.
           Randomness is committed at buy-time and resolved {PACK_REVEAL_DELAY_BLOCKS}{" "}
           blocks later using the block hash.
         </p>

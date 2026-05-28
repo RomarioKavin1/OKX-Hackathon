@@ -23,6 +23,13 @@
 
 import { use, useEffect, useRef, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase/browser";
+import {
+  Panel,
+  Pill,
+  SectionHeading,
+  EmptyState,
+  cx,
+} from "@/components/ui";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -60,12 +67,46 @@ function fmtDelta(delta: number): string {
   return delta > 0 ? `+${delta.toFixed(2)}` : delta.toFixed(2);
 }
 
-/** A rank badge: 1st is gold-ish, 2nd silver, 3rd bronze, rest plain. */
-function rankClass(rank: number | null): string {
-  if (rank === 1) return "font-bold text-amber-700";
-  if (rank === 2) return "font-bold text-zinc-500";
-  if (rank === 3) return "font-bold text-amber-600";
-  return "text-zinc-600";
+/**
+ * Rank medal indicator: 1st gold, 2nd silver, 3rd cobalt, rest muted.
+ * Conveyed by text + tone, never by hue alone.
+ */
+function RankBadge({ rank }: { rank: number }) {
+  if (rank === 1)
+    return (
+      <span
+        className="display text-base tabular-nums text-gold"
+        aria-label={`Rank ${rank}`}
+      >
+        1
+      </span>
+    );
+  if (rank === 2)
+    return (
+      <span
+        className="display text-base tabular-nums text-on-panel-muted"
+        aria-label={`Rank ${rank}`}
+      >
+        2
+      </span>
+    );
+  if (rank === 3)
+    return (
+      <span
+        className="display text-base tabular-nums text-cobalt"
+        aria-label={`Rank ${rank}`}
+      >
+        3
+      </span>
+    );
+  return (
+    <span
+      className="tabular-nums text-sm text-on-panel-muted"
+      aria-label={`Rank ${rank}`}
+    >
+      {rank}
+    </span>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -79,19 +120,24 @@ interface LeaderboardRowProps {
 
 function LeaderboardRow({ entry, position }: LeaderboardRowProps) {
   const displayRank = entry.rank ?? position;
+  const isTop3 = displayRank <= 3;
   return (
-    <tr className="border-b border-zinc-100 last:border-0 hover:bg-zinc-50 transition-colors">
-      <td
-        className={`py-2 pl-3 pr-4 text-sm tabular-nums w-10 ${rankClass(displayRank)}`}
-        aria-label={`Rank ${displayRank}`}
-      >
-        {displayRank}
+    <tr
+      className={cx(
+        "border-b border-panel-2 last:border-0 transition-colors duration-150 [transition-timing-function:var(--ease-out-expo)]",
+        isTop3 ? "bg-panel-2/60" : "hover:bg-panel-2/40",
+      )}
+    >
+      <td className="w-10 py-3 pl-4 pr-3">
+        <RankBadge rank={displayRank} />
       </td>
-      <td className="py-2 pr-4 text-sm font-mono text-zinc-700">
+      <td className="py-3 pr-4 font-mono text-sm text-on-panel-muted">
         {fmtWallet(entry.wallet)}
       </td>
-      <td className="py-2 pr-3 text-right text-sm font-semibold tabular-nums text-zinc-900">
-        {entry.score.toFixed(2)}
+      <td className="py-3 pr-4 text-right">
+        <span className="display text-lg tabular-nums text-on-panel">
+          {entry.score.toFixed(2)}
+        </span>
       </td>
     </tr>
   );
@@ -103,15 +149,28 @@ interface TickerItemProps {
 
 function TickerItem({ event }: TickerItemProps) {
   const isGain = event.delta >= 0;
-  const deltaClass = isGain ? "text-emerald-700" : "text-red-600";
   return (
-    <li className="flex items-center gap-2 rounded-md bg-zinc-50 px-3 py-1.5 text-xs">
-      <span className="font-mono text-zinc-500">{fmtWallet(event.wallet)}</span>
-      <span className="text-zinc-400">scored</span>
-      <span className="font-semibold text-zinc-900">{event.newScore.toFixed(2)}</span>
-      <span className={`font-semibold ${deltaClass}`}>({fmtDelta(event.delta)})</span>
-      <time className="ml-auto text-[10px] text-zinc-400" dateTime={event.at}>
-        {new Date(event.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+    <li className="flex items-center gap-2 rounded-sm border border-panel-2 bg-panel-2/50 px-3 py-2 text-xs">
+      <span className="font-mono text-on-panel-muted">{fmtWallet(event.wallet)}</span>
+      <span className="text-on-panel-muted">scored</span>
+      <span className="display tabular-nums text-on-panel">{event.newScore.toFixed(2)}</span>
+      <span
+        className={cx(
+          "font-semibold tabular-nums",
+          isGain ? "text-grass" : "text-danger",
+        )}
+      >
+        ({fmtDelta(event.delta)})
+      </span>
+      <time
+        className="ml-auto text-[10px] tabular-nums text-on-panel-muted"
+        dateTime={event.at}
+      >
+        {new Date(event.at).toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+        })}
       </time>
     </li>
   );
@@ -130,7 +189,7 @@ export default function LiveMatchdayPage({
   const { matchday: matchdayStr } = use(params);
   const matchday = parseInt(matchdayStr, 10);
 
-  // Leaderboard state: wallet → row (latest snapshot)
+  // Leaderboard state: wallet -> row (latest snapshot)
   const [rows, setRows] = useState<Map<string, LiveScoreRow>>(new Map());
   // Ticker: last 8 score-change events (newest first)
   const [ticker, setTicker] = useState<TickerEvent[]>([]);
@@ -154,7 +213,7 @@ export default function LiveMatchdayPage({
       return;
     }
 
-    // ── Initial fetch: populate leaderboard without waiting for a change event
+    // -- Initial fetch: populate leaderboard without waiting for a change event
     const fetchInitial = async () => {
       const { data, error } = await client
         .from("live_scores")
@@ -178,7 +237,7 @@ export default function LiveMatchdayPage({
 
     void fetchInitial();
 
-    // ── Realtime subscription ──────────────────────────────────────────────
+    // -- Realtime subscription -----------------------------------------------
     const channel = client
       .channel(`live:${matchday}`)
       .on(
@@ -231,144 +290,159 @@ export default function LiveMatchdayPage({
   // Sort leaderboard by score descending
   const sorted = [...rows.values()].sort((a, b) => b.score - a.score);
 
-  // ── Invalid matchday guard ─────────────────────────────────────────────────
+  // -- Invalid matchday guard ------------------------------------------------
 
   if (!Number.isFinite(matchday) || matchday < 0) {
     return (
-      <main className="flex max-w-2xl flex-col gap-4">
-        <h1 className="text-2xl font-bold">Invalid Matchday</h1>
-        <p className="text-sm text-zinc-500">
-          The matchday parameter must be a non-negative integer.
-        </p>
+      <main className="flex max-w-2xl flex-col gap-6 py-4">
+        <EmptyState
+          icon="⚠"
+          title="Invalid Matchday"
+          hint="The matchday parameter must be a non-negative integer."
+        />
       </main>
     );
   }
 
-  // ── Render ─────────────────────────────────────────────────────────────────
+  // -- Render ----------------------------------------------------------------
 
   return (
-    <main className="flex max-w-3xl flex-col gap-6">
-      <header className="flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">
-            Matchday {matchday} — Live Scoring
-          </h1>
-          <p className="mt-1 text-sm text-zinc-500">
-            Leaderboard updates in real-time as match events arrive.
-          </p>
-        </div>
-        {/* Connection indicator */}
+    <main className="flex max-w-3xl flex-col gap-8 py-4">
+      {/* Page header */}
+      <div className="flex items-start justify-between gap-4">
+        <SectionHeading
+          kicker={`Matchday ${matchday}`}
+          title="Live Scoring"
+        />
+
+        {/* Connection status indicator */}
         <div
-          className="flex items-center gap-1.5 mt-1"
+          className="mt-1 flex shrink-0 items-center gap-1.5"
           role="status"
           aria-label={connected ? "Live feed connected" : "Live feed disconnected"}
         >
-          <span
-            className={`inline-block h-2 w-2 rounded-full ${
-              connected ? "bg-emerald-500 animate-pulse" : "bg-zinc-300"
-            }`}
-            aria-hidden="true"
-          />
-          <span className="text-xs text-zinc-500">
-            {connected ? "Live" : "Connecting…"}
-          </span>
+          {connected ? (
+            <Pill tone="flame">
+              <span
+                aria-hidden="true"
+                className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-current"
+              />
+              Live
+            </Pill>
+          ) : (
+            <Pill tone="neutral">
+              <span aria-hidden="true" className="inline-block h-1.5 w-1.5 rounded-full bg-current" />
+              Connecting
+            </Pill>
+          )}
         </div>
-      </header>
+      </div>
 
       {/* Error banner */}
       {loadError && (
-        <div
-          className="rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
-          role="alert"
-        >
-          {loadError}
-        </div>
+        <Panel variant="outline" className="px-4 py-3">
+          <p className="text-sm text-danger" role="alert">
+            {loadError}
+          </p>
+        </Panel>
       )}
 
-      {/* Leaderboard table */}
+      {/* Scoreboard — ink panel */}
       <section aria-labelledby="leaderboard-heading">
-        <h2
+        <p
           id="leaderboard-heading"
-          className="mb-2 text-sm font-semibold uppercase tracking-wide text-zinc-600"
+          className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-muted"
         >
           Leaderboard
-        </h2>
+        </p>
 
         {sorted.length === 0 ? (
-          <p className="rounded border border-zinc-200 bg-zinc-50 px-4 py-6 text-center text-sm text-zinc-500">
-            {connected
-              ? "Waiting for scores… The replay may not have started yet."
-              : "Connecting to live feed…"}
-          </p>
+          <EmptyState
+            icon="⚽"
+            title="Matches begin June 11, 2026"
+            hint={
+              connected
+                ? "Waiting for scores. The replay may not have started yet."
+                : "Connecting to the live feed..."
+            }
+          />
         ) : (
-          <div className="overflow-x-auto rounded-lg border border-zinc-200">
-            <table className="w-full text-left" aria-label={`Matchday ${matchday} live leaderboard`}>
-              <thead>
-                <tr className="border-b border-zinc-200 bg-zinc-50">
-                  <th
-                    scope="col"
-                    className="py-2 pl-3 pr-4 text-xs font-semibold text-zinc-500 w-10"
-                  >
-                    Rank
-                  </th>
-                  <th
-                    scope="col"
-                    className="py-2 pr-4 text-xs font-semibold text-zinc-500"
-                  >
-                    Wallet
-                  </th>
-                  <th
-                    scope="col"
-                    className="py-2 pr-3 text-right text-xs font-semibold text-zinc-500"
-                  >
-                    Score
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {sorted.map((entry, i) => (
-                  <LeaderboardRow
-                    key={entry.wallet}
-                    entry={entry}
-                    position={i + 1}
-                  />
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <Panel variant="ink" className="overflow-hidden p-0">
+            <div className="overflow-x-auto">
+              <table
+                className="w-full text-left"
+                aria-label={`Matchday ${matchday} live leaderboard`}
+              >
+                <thead>
+                  <tr className="border-b border-panel-2">
+                    <th
+                      scope="col"
+                      className="w-10 py-3 pl-4 pr-3 text-xs font-semibold uppercase tracking-[0.15em] text-on-panel-muted"
+                    >
+                      #
+                    </th>
+                    <th
+                      scope="col"
+                      className="py-3 pr-4 text-xs font-semibold uppercase tracking-[0.15em] text-on-panel-muted"
+                    >
+                      Wallet
+                    </th>
+                    <th
+                      scope="col"
+                      className="py-3 pr-4 text-right text-xs font-semibold uppercase tracking-[0.15em] text-on-panel-muted"
+                    >
+                      Score
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sorted.map((entry, i) => (
+                    <LeaderboardRow
+                      key={entry.wallet}
+                      entry={entry}
+                      position={i + 1}
+                    />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Panel>
         )}
       </section>
 
       {/* Ticker: live score-change events */}
       <section aria-labelledby="ticker-heading">
-        <h2
+        <p
           id="ticker-heading"
-          className="mb-2 text-sm font-semibold uppercase tracking-wide text-zinc-600"
+          className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-muted"
         >
           Recent Updates
-        </h2>
+        </p>
 
         {ticker.length === 0 ? (
-          <p className="text-sm text-zinc-400">No score updates yet.</p>
+          <p className="text-sm text-muted">No score updates yet.</p>
         ) : (
-          <ul
-            className="flex flex-col gap-1"
-            aria-live="polite"
-            aria-atomic="false"
-            aria-label="Recent score updates"
-          >
-            {ticker.map((event) => (
-              <TickerItem key={event.id} event={event} />
-            ))}
-          </ul>
+          <Panel variant="ink" className="p-3">
+            <ul
+              className="flex flex-col gap-1.5"
+              aria-live="polite"
+              aria-atomic="false"
+              aria-label="Recent score updates"
+            >
+              {ticker.map((event) => (
+                <TickerItem key={event.id} event={event} />
+              ))}
+            </ul>
+          </Panel>
         )}
       </section>
 
       {/* Footer note */}
-      <footer className="text-xs text-zinc-400">
+      <footer className="text-xs text-muted">
         Scores computed by the oracle replay worker using the same formula as
         the on-chain settlement (spec §4.9). Replay must be running (
-        <code>npm run replay {matchday}</code>) for this page to update.
+        <code className="font-mono">npm run replay {matchday}</code>) for this
+        page to update.
       </footer>
     </main>
   );

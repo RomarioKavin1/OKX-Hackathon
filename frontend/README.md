@@ -1,6 +1,6 @@
-# ManagerCup — Frontend & Contract SDK
+# PANENKA — Frontend & Contract SDK
 
-Next.js 16 (App Router, TypeScript, Tailwind) + a typed TypeScript SDK for the ManagerCup
+Next.js 16 (App Router, TypeScript, Tailwind) + a typed TypeScript SDK for the PANENKA
 contracts on OKX **X Layer testnet** (chain `1952`).
 
 ## Layout

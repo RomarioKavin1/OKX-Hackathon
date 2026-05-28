@@ -6,80 +6,42 @@ import type { Address } from "viem";
 import { publicClient } from "@/lib/clients";
 import { usdcBalance } from "@/lib/actions/reads";
 import { fmtUsdc } from "@/lib/business/format";
+import { buttonClasses, cx, Pill } from "@/components/ui";
 
 /** Truncate a hex address to "0x1234…abcd" */
 function truncate(address: Address): string {
   return `${address.slice(0, 6)}…${address.slice(-4)}`;
 }
 
-// ── Sub-components (module scope — never nested inside render) ───────────────
+// ~0.001 OKB (1e15 wei) is enough to submit 1-2 txs.
+const GAS_THRESHOLD = 1_000_000_000_000_000n;
 
-interface GasBannerProps {
-  address: Address;
-}
-
-/** Reads OKB balance and shows a warning banner if it's below the gas threshold. */
-function GasBanner({ address }: GasBannerProps) {
-  const [okbBalance, setOkbBalance] = useState<bigint | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const bal = await publicClient.getBalance({ address });
-        if (!cancelled) {
-          startTransition(() => setOkbBalance(bal));
-        }
-      } catch {
-        // silently ignore — no banner on error
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [address]);
-
-  // Threshold: ~0.001 OKB (1e15 wei) is enough to submit 1–2 txs
-  const GAS_THRESHOLD = 1_000_000_000_000_000n; // 0.001 OKB in wei
-
-  if (okbBalance === null) return null;
-
-  if (okbBalance < GAS_THRESHOLD) {
-    return (
-      <div
-        role="alert"
-        className="rounded bg-amber-50 border border-amber-300 px-3 py-1.5 text-xs text-amber-800"
-        aria-label="Insufficient gas banner"
-      >
-        <span className="font-semibold">Insufficient Gas (OKB)</span>
-        <p className="mt-0.5 opacity-80">
-          Get OKB gas via OKX exchange or a partner on-ramp.
-        </p>
-      </div>
-    );
-  }
-
-  return null;
-}
-
-interface UsdcBannerProps {
-  address: Address;
-}
-
-/** Reads USDC balance and shows a hint if it's zero. */
-function UsdcBanner({ address }: UsdcBannerProps) {
+/**
+ * Connected wallet control: a compact chip with a status indicator dot, opening
+ * a dropdown with balances, low-gas / faucet hints, and log out. The dot turns
+ * amber when something needs attention (low OKB gas or zero USDC).
+ */
+function WalletMenu({ address, onLogout }: { address: Address; onLogout: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [okb, setOkb] = useState<bigint | null>(null);
   const [usdc, setUsdc] = useState<bigint | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const bal = await usdcBalance(address);
-        if (!cancelled) {
-          startTransition(() => setUsdc(bal));
-        }
+        const b = await publicClient.getBalance({ address });
+        if (!cancelled) startTransition(() => setOkb(b));
       } catch {
-        // silently ignore
+        /* ignore */
+      }
+    })();
+    (async () => {
+      try {
+        const b = await usdcBalance(address);
+        if (!cancelled) startTransition(() => setUsdc(b));
+      } catch {
+        /* ignore */
       }
     })();
     return () => {
@@ -87,66 +49,117 @@ function UsdcBanner({ address }: UsdcBannerProps) {
     };
   }, [address]);
 
-  if (usdc === null || usdc > 0n) return null;
+  const lowGas = okb !== null && okb < GAS_THRESHOLD;
+  const noUsdc = usdc !== null && usdc === 0n;
+  const attention = lowGas || noUsdc;
 
   return (
-    <div
-      role="status"
-      className="rounded bg-blue-50 border border-blue-200 px-3 py-1.5 text-xs text-blue-800"
-      aria-label="Insufficient USDC hint"
-    >
-      <span className="font-semibold">0 USDC</span>
-      {" — "}
-      <span className="opacity-80">
-        use <a href="/settings" className="underline">Settings → Faucet</a> to get test USDC.
-      </span>
-    </div>
-  );
-}
-
-interface WalletStatusPanelProps {
-  address: Address;
-  onLogout: () => void;
-}
-
-/** Panel shown when the user is connected: address + banners + logout. */
-function WalletStatusPanel({ address, onLogout }: WalletStatusPanelProps) {
-  return (
-    <div className="flex flex-col gap-2">
-      <div className="flex items-center gap-2">
-        <span className="font-mono text-sm" title={address}>
-          {truncate(address)}
+    <div className="relative">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={`Wallet ${truncate(address)}${attention ? " — needs attention" : ""}`}
+        className="flex items-center gap-2 rounded-full border border-line bg-paper-2 py-1 pl-2.5 pr-2.5 shadow-sticker transition-colors hover:border-line-2"
+      >
+        <span className="relative flex size-2.5" aria-hidden>
+          {attention && (
+            <span className="absolute inline-flex size-full animate-ping rounded-full bg-warn opacity-60" />
+          )}
+          <span className={cx("relative inline-flex size-2.5 rounded-full", attention ? "bg-warn" : "bg-ok")} />
         </span>
-        <button
-          onClick={onLogout}
-          className="rounded border border-current px-3 py-1 text-sm hover:opacity-80"
-        >
-          Log out
-        </button>
-      </div>
-      <GasBanner address={address} />
-      <UsdcBanner address={address} />
+        <span className="font-mono text-xs text-ink">{truncate(address)}</span>
+        <svg viewBox="0 0 12 12" className={cx("size-3 text-muted transition-transform duration-200", open && "rotate-180")} aria-hidden>
+          <path d="M3 4.5L6 7.5L9 4.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+
+      {open && (
+        <>
+          {/* click-away */}
+          <button
+            aria-hidden
+            tabIndex={-1}
+            onClick={() => setOpen(false)}
+            className="fixed inset-0 z-40 cursor-default"
+          />
+          <div
+            role="menu"
+            aria-label="Wallet menu"
+            className="absolute right-0 top-full z-50 mt-2 w-72 overflow-hidden rounded-card border border-line bg-paper-2 shadow-lift"
+          >
+            <div className="flex items-center justify-between gap-2 border-b border-line px-4 py-3">
+              <span className="text-xs font-semibold uppercase tracking-[0.16em] text-muted">Wallet</span>
+              <Pill tone="cobalt">X Layer Testnet</Pill>
+            </div>
+
+            <div className="px-4 py-3">
+              <p className="break-all font-mono text-xs text-ink-2" title={address}>{address}</p>
+            </div>
+
+            <dl className="border-t border-line px-4 py-3 text-sm">
+              <div className="flex items-center justify-between py-1">
+                <dt className="text-muted">USDC</dt>
+                <dd className="font-mono tabular-nums text-ink">{usdc != null ? fmtUsdc(usdc) : "…"}</dd>
+              </div>
+              <div className="flex items-center justify-between py-1">
+                <dt className="text-muted">Gas (OKB)</dt>
+                <dd>
+                  {okb == null ? (
+                    <span className="text-muted">…</span>
+                  ) : lowGas ? (
+                    <Pill tone="warn">Low</Pill>
+                  ) : (
+                    <Pill tone="ok">OK</Pill>
+                  )}
+                </dd>
+              </div>
+            </dl>
+
+            {attention && (
+              <div className="border-t border-line bg-paper-3 px-4 py-3 text-xs text-ink-2">
+                {lowGas && (
+                  <p className="mb-1">
+                    <span className="font-semibold text-ink">Low gas.</span> Top up OKB via OKX or a partner on-ramp.
+                  </p>
+                )}
+                {noUsdc && (
+                  <p>
+                    <span className="font-semibold text-ink">0 USDC.</span> Get test funds in{" "}
+                    <a href="/settings" className="text-cobalt-ink underline underline-offset-2" onClick={() => setOpen(false)}>
+                      Settings → Faucet
+                    </a>
+                    .
+                  </p>
+                )}
+              </div>
+            )}
+
+            <div className="border-t border-line p-2">
+              <button
+                role="menuitem"
+                onClick={() => {
+                  setOpen(false);
+                  onLogout();
+                }}
+                className={cx(buttonClasses("secondary", "sm"), "w-full")}
+              >
+                Log out
+              </button>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
-
-// ── Main export ───────────────────────────────────────────────────────────────
 
 /**
  * WalletButton — FR-O1/O2/O6
  *
- * Disconnected: renders "Connect Wallet" → opens the Privy modal
- *   (covers OKX Wallet / MetaMask / WalletConnect / embedded wallets).
- * Connected:    renders truncated address + "Log out" button.
- *   Also shows:
- *   - Insufficient Gas (OKB) banner (US-02) when OKB < 0.001
- *   - Insufficient USDC hint when USDC == 0
- *
- * All interactive elements are keyboard-focusable and inherit the global
- * :focus-visible ring defined in globals.css.
- *
- * Balance reads use the async-IIFE + cancelled-flag pattern to avoid
- * synchronous setState-in-effect.
+ * Disconnected: "Connect wallet" opens the Privy modal (OKX Wallet / MetaMask /
+ * WalletConnect / embedded). Connected: a status chip + dropdown (balances,
+ * low-gas / faucet hints, log out), with an attention dot on the chip.
  */
 export function WalletButton() {
   const { ready, authenticated, login, logout } = usePrivy();
@@ -155,30 +168,22 @@ export function WalletButton() {
 
   if (!ready) {
     return (
-      <span className="text-sm opacity-60" aria-live="polite">
+      <span className="text-sm text-muted" aria-live="polite">
         Loading…
       </span>
     );
   }
 
   if (authenticated && address) {
-    return (
-      <WalletStatusPanel
-        address={address}
-        onLogout={logout}
-      />
-    );
+    return <WalletMenu address={address} onLogout={logout} />;
   }
 
   return (
-    <button
-      onClick={() => login()}
-      className="rounded bg-[var(--pitch-green)] px-4 py-1.5 text-sm font-medium text-white hover:opacity-90"
-    >
-      Connect Wallet
+    <button onClick={() => login()} className={buttonClasses("primary", "md")}>
+      Connect wallet
     </button>
   );
 }
 
-// Re-export fmtUsdc as a convenience (used in banners' aria labels, keeps import count low)
+// Re-export fmtUsdc as a convenience (used elsewhere; keeps import count low)
 export { fmtUsdc };

@@ -1,5 +1,5 @@
 /**
- * players.ts — Real player catalog for the ManagerCup demo.
+ * players.ts — Real player catalog for the PANENKA demo.
  *
  * Four nations:
  *   FRA — full starting XI + 4 bench (demo match home)

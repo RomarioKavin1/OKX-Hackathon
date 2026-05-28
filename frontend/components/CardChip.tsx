@@ -11,6 +11,7 @@
 import type { KeyboardEvent } from "react";
 import type { Tier } from "@/lib/types";
 import { TIER_NAME } from "@/lib/types";
+import { cx, Pill } from "@/components/ui";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Public types
@@ -57,10 +58,11 @@ function staminaLabel(s: number): "Fresh" | "Normal" | "Fatigued" {
 }
 
 // Color-blind-safe: pair each state with distinct label + shape (not just hue).
-function staminaStyle(label: "Fresh" | "Normal" | "Fatigued"): string {
-  if (label === "Fresh") return "bg-emerald-100 text-emerald-800 border border-emerald-300";
-  if (label === "Fatigued") return "bg-orange-100 text-orange-800 border border-orange-300";
-  return "bg-zinc-100 text-zinc-600 border border-zinc-300";
+// Uses design tokens: ok/warn/danger.
+function staminaTone(label: "Fresh" | "Normal" | "Fatigued"): "ok" | "warn" | "danger" {
+  if (label === "Fresh") return "ok";
+  if (label === "Fatigued") return "danger";
+  return "warn";
 }
 
 function staminaIcon(label: "Fresh" | "Normal" | "Fatigued"): string {
@@ -69,11 +71,12 @@ function staminaIcon(label: "Fresh" | "Normal" | "Fatigued"): string {
   return "●";
 }
 
-const TIER_COLOR: Record<Tier, string> = {
-  0: "border-zinc-400 bg-zinc-50",      // Common
-  1: "border-blue-400 bg-blue-50",      // Rare
-  2: "border-violet-400 bg-violet-50",  // SuperRare
-  3: "border-amber-400 bg-amber-50",    // Unique
+// Tier border — collectible rarity spine
+const TIER_BORDER: Record<Tier, string> = {
+  0: "border-line-2",          // Common
+  1: "border-cobalt/55",       // Rare
+  2: "border-violet/55",       // Super Rare
+  3: "border-gold/70",         // Unique
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -91,7 +94,8 @@ export function CardChip({
   placed = false,
 }: CardChipProps) {
   const sl = staminaLabel(card.stamina);
-  const tierBorder = TIER_COLOR[card.tier as keyof typeof TIER_COLOR] ?? TIER_COLOR[0];
+  const tierBorder = TIER_BORDER[card.tier as keyof typeof TIER_BORDER] ?? TIER_BORDER[0];
+  const isUnique = card.tier === 3;
   const isActive = isSelected;
 
   function handleKey(e: KeyboardEvent<HTMLDivElement>) {
@@ -115,19 +119,31 @@ export function CardChip({
         onDragStart={onDragStart ? (e) => onDragStart(e, card.tokenId) : undefined}
         onClick={() => onSelect(card.tokenId)}
         onKeyDown={handleKey}
-        className={[
-          "flex items-center gap-1 rounded px-1 py-0.5 text-xs border cursor-pointer",
-          "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-zinc-900",
+        className={cx(
+          "flex items-center gap-1 rounded-sm border-2 bg-paper-2 px-1.5 py-1 text-xs cursor-pointer select-none",
+          "shadow-sticker transition-[transform,box-shadow] duration-150 [transition-timing-function:var(--ease-out-expo)]",
+          "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-cobalt",
+          isUnique && "foil-sheen",
           tierBorder,
-          isActive ? "ring-2 ring-zinc-900" : "",
-          placed ? "opacity-50" : "",
-        ].join(" ")}
+          isActive ? "ring-2 ring-cobalt ring-offset-1 ring-offset-paper" : "hover:shadow-lift",
+          placed ? "opacity-45 saturate-50" : "",
+        )}
       >
-        <span className="font-medium truncate max-w-[80px]">{card.playerName}</span>
-        {isCaptain && <span className="ml-0.5 font-bold text-amber-700 text-xs" aria-hidden>C</span>}
-        {isVice && <span className="ml-0.5 font-bold text-zinc-500 text-xs" aria-hidden>V</span>}
-        <span className={`ml-auto rounded px-0.5 text-[10px] ${staminaStyle(sl)}`} aria-hidden>
-          {staminaIcon(sl)}
+        <span className="font-semibold truncate max-w-[80px] text-ink">{card.playerName}</span>
+        {isCaptain && (
+          <Pill tone="gold" className="ml-0.5 !px-1 !py-0">
+            C
+          </Pill>
+        )}
+        {isVice && (
+          <Pill tone="cobalt" className="ml-0.5 !px-1 !py-0">
+            V
+          </Pill>
+        )}
+        <span aria-hidden className="ml-auto">
+          <Pill tone={staminaTone(sl)} className="!px-1 !py-0">
+            {staminaIcon(sl)}
+          </Pill>
         </span>
       </div>
     );
@@ -143,48 +159,55 @@ export function CardChip({
       onDragStart={onDragStart ? (e) => onDragStart(e, card.tokenId) : undefined}
       onClick={() => onSelect(card.tokenId)}
       onKeyDown={handleKey}
-      className={[
-        "relative flex flex-col gap-1 rounded border-2 p-2 cursor-pointer select-none",
-        "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900",
+      className={cx(
+        "relative flex flex-col gap-1.5 rounded-sm border-2 bg-paper-2 p-2 cursor-pointer select-none",
+        "shadow-sticker transition-[transform,box-shadow] duration-150 [transition-timing-function:var(--ease-out-expo)]",
+        "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cobalt",
+        isUnique && "foil-sheen",
         tierBorder,
-        isActive ? "ring-2 ring-zinc-900 shadow-md" : "hover:shadow-sm",
-        placed ? "opacity-40" : "",
-      ].join(" ")}
+        isActive
+          ? "ring-2 ring-cobalt ring-offset-2 ring-offset-paper shadow-lift"
+          : "hover:-translate-y-px hover:shadow-lift",
+        placed ? "opacity-45 saturate-50" : "",
+      )}
     >
       {/* Position + nation row */}
-      <div className="flex items-center justify-between">
-        <span className="rounded bg-zinc-800 px-1 py-0.5 text-[10px] font-bold text-white">
+      <div className="flex items-center justify-between gap-1">
+        <span className="rounded-xs bg-panel px-1.5 py-0.5 text-[10px] font-semibold text-on-panel uppercase tracking-wide">
           {card.position}
         </span>
-        <span className="text-[10px] text-zinc-500">{card.nation}</span>
+        <span className="text-[10px] text-muted truncate">{card.nation}</span>
       </div>
 
       {/* Name */}
-      <p className="text-xs font-semibold leading-tight text-zinc-800 truncate">
+      <p className="text-xs font-semibold leading-tight text-ink truncate">
         {card.playerName}
-        {isCaptain && <span className="ml-1 text-amber-600 font-bold" aria-label="Captain"> (C)</span>}
-        {isVice && <span className="ml-1 text-zinc-500 font-bold" aria-label="Vice-captain"> (V)</span>}
+        {isCaptain && (
+          <span className="ml-1 font-bold text-[color:var(--gold)]" aria-label="Captain"> (C)</span>
+        )}
+        {isVice && (
+          <span className="ml-1 font-bold text-cobalt-ink" aria-label="Vice-captain"> (V)</span>
+        )}
       </p>
 
-      {/* Tier badge */}
-      <p className="text-[10px] text-zinc-400">{TIER_NAME[card.tier]}</p>
+      {/* Tier label */}
+      <p className="text-[10px] text-muted font-medium">{TIER_NAME[card.tier]}</p>
 
-      {/* Stamina badge — color-blind-safe: icon + text + color */}
-      <div
-        className={`flex items-center gap-0.5 rounded px-1 py-0.5 text-[10px] w-fit ${staminaStyle(sl)}`}
-        aria-label={`Stamina: ${sl}`}
-      >
-        <span aria-hidden>{staminaIcon(sl)}</span>
-        <span>{sl}</span>
+      {/* Stamina badge — color-blind-safe: icon + text + token color */}
+      <div aria-label={`Stamina: ${sl}`}>
+        <Pill tone={staminaTone(sl)} className="gap-0.5">
+          <span aria-hidden>{staminaIcon(sl)}</span>
+          <span>{sl}</span>
+        </Pill>
       </div>
 
       {/* Traits */}
       {card.traits.length > 0 && (
         <div className="flex flex-wrap gap-0.5 mt-0.5">
           {card.traits.map((t) => (
-            <span key={t} className="rounded bg-zinc-100 px-1 text-[9px] text-zinc-600 border border-zinc-200">
+            <Pill key={t} tone="neutral" className="!text-[9px] !px-1">
               {t}
-            </span>
+            </Pill>
           ))}
         </div>
       )}
@@ -192,7 +215,7 @@ export function CardChip({
       {/* Selected highlight */}
       {isActive && (
         <span
-          className="absolute top-0.5 right-0.5 rounded-full bg-zinc-900 text-white text-[9px] w-4 h-4 flex items-center justify-center"
+          className="absolute top-0.5 right-0.5 rounded-full bg-cobalt text-on-panel text-[9px] w-4 h-4 flex items-center justify-center shadow-sticker"
           aria-hidden
         >
           ✓

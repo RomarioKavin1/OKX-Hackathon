@@ -74,57 +74,73 @@ export async function GET(request: NextRequest): Promise<Response> {
     }
   }
 
-  const db = supabaseAnonServer();
+  let db;
+  try {
+    db = supabaseAnonServer();
+  } catch (e) {
+    return Response.json(
+      { error: e instanceof Error ? e.message : "Supabase unavailable" },
+      { status: 503 },
+    );
+  }
 
-  // Build query: join marketplace_listings with cards on token_id
-  // Filter active=true in SQL; also filter tier and player in SQL when provided.
-  // price is stored as numeric(78,0) — compare as string since Supabase JS returns it as string.
-  let query = db
+  // Two-step manual join (marketplace_listings -> cards on token_id). We do not
+  // rely on a PostgREST embedded join, so no DB foreign key is required.
+  // price is stored as numeric(78,0); Supabase JS returns/accepts it as a string.
+  let listQuery = db
     .from("marketplace_listings")
-    .select(
-      "token_id, seller, price, cards!inner(player_id, tier)"
-    )
+    .select("token_id, seller, price")
     .eq("active", true)
     .order("price", { ascending: true });
-
-  // SQL-level filters on indexed columns
-  if (tierFilter !== null) {
-    query = query.eq("cards.tier", tierFilter);
-  }
-  if (playerParam) {
-    query = query.eq("cards.player_id", playerParam.trim().toLowerCase());
-  }
   if (maxPriceFilter !== null) {
-    // price column is numeric; Supabase JS .lte accepts string for numeric columns
-    query = query.lte("price", maxPriceFilter.toString());
+    listQuery = listQuery.lte("price", maxPriceFilter.toString());
   }
 
-  const res = await query;
-
-  if (res.error) {
+  const listRes = await listQuery;
+  if (listRes.error) {
     return Response.json(
-      { error: `Supabase error: ${res.error.message}` },
+      { error: `Supabase error: ${listRes.error.message}` },
       { status: 500 }
     );
   }
 
-  type RawRow = {
-    token_id: string;
-    seller: string;
-    price: string;
-    cards: { player_id: string; tier: number };
-  };
+  type ListingRow = { token_id: string; seller: string; price: string };
+  const listingRows = (listRes.data ?? []) as unknown as ListingRow[];
+  if (listingRows.length === 0) {
+    return Response.json({ listings: [] } satisfies MarketResponse);
+  }
 
-  const rows = (res.data ?? []) as unknown as RawRow[];
+  // Fetch the matching cards (tier/player filters applied here in SQL).
+  const tokenIds = listingRows.map((r) => String(r.token_id));
+  let cardQuery = db
+    .from("cards")
+    .select("token_id, player_id, tier")
+    .in("token_id", tokenIds);
+  if (tierFilter !== null) cardQuery = cardQuery.eq("tier", tierFilter);
+  if (playerParam) cardQuery = cardQuery.eq("player_id", playerParam.trim().toLowerCase());
 
-  // Derive nation/position from lib/data and apply post-fetch filters
+  const cardRes = await cardQuery;
+  if (cardRes.error) {
+    return Response.json(
+      { error: `Supabase error: ${cardRes.error.message}` },
+      { status: 500 }
+    );
+  }
+
+  type CardRow = { token_id: string; player_id: string; tier: number };
+  const cardByToken = new Map<string, CardRow>(
+    ((cardRes.data ?? []) as unknown as CardRow[]).map((c) => [String(c.token_id), c]),
+  );
+
+  // Join (preserving price order) and apply derived nation/position filters.
   const listings: MarketListing[] = [];
-  for (const row of rows) {
-    const pid = row.cards.player_id as `0x${string}`;
+  for (const row of listingRows) {
+    const card = cardByToken.get(String(row.token_id));
+    if (!card) continue; // card missing or filtered out by tier/player
+    const pid = card.player_id as `0x${string}`;
     const nation = nationOf(pid) ?? null;
     const position = positionOf(pid) ?? null;
 
-    // Apply post-fetch filters for nation and position (derived, not in DB)
     if (nationParam && nation !== nationParam) continue;
     if (positionParam && position !== positionParam) continue;
 
@@ -132,8 +148,8 @@ export async function GET(request: NextRequest): Promise<Response> {
       tokenId: String(row.token_id),
       seller: row.seller,
       price: String(row.price),
-      playerId: row.cards.player_id,
-      tier: row.cards.tier,
+      playerId: card.player_id,
+      tier: card.tier,
       nation,
       position,
     });

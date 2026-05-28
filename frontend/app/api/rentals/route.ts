@@ -78,55 +78,71 @@ export async function GET(request: NextRequest): Promise<Response> {
     }
   }
 
-  const db = supabaseAnonServer();
+  let db;
+  try {
+    db = supabaseAnonServer();
+  } catch (e) {
+    return Response.json(
+      { error: e instanceof Error ? e.message : "Supabase unavailable" },
+      { status: 503 },
+    );
+  }
 
-  // Build query: join rental_listings with cards on token_id
-  let query = db
+  // Two-step manual join (rental_listings -> cards on token_id). No PostgREST
+  // embedded join, so no DB foreign key is required.
+  let listQuery = db
     .from("rental_listings")
-    .select(
-      "token_id, owner, mode, price_value, cards!inner(player_id, tier)"
-    )
+    .select("token_id, owner, mode, price_value")
     .eq("active", true)
     .order("price_value", { ascending: true });
-
-  // SQL-level filters on indexed columns
-  if (tierFilter !== null) {
-    query = query.eq("cards.tier", tierFilter);
-  }
-  if (playerParam) {
-    query = query.eq("cards.player_id", playerParam.trim().toLowerCase());
-  }
   if (maxPriceFilter !== null) {
-    query = query.lte("price_value", maxPriceFilter.toString());
+    listQuery = listQuery.lte("price_value", maxPriceFilter.toString());
   }
 
-  const res = await query;
-
-  if (res.error) {
+  const listRes = await listQuery;
+  if (listRes.error) {
     return Response.json(
-      { error: `Supabase error: ${res.error.message}` },
+      { error: `Supabase error: ${listRes.error.message}` },
       { status: 500 }
     );
   }
 
-  type RawRow = {
-    token_id: string;
-    owner: string;
-    mode: number;
-    price_value: string;
-    cards: { player_id: string; tier: number };
-  };
+  type ListingRow = { token_id: string; owner: string; mode: number; price_value: string };
+  const listingRows = (listRes.data ?? []) as unknown as ListingRow[];
+  if (listingRows.length === 0) {
+    return Response.json({ listings: [] } satisfies RentalsResponse);
+  }
 
-  const rows = (res.data ?? []) as unknown as RawRow[];
+  const tokenIds = listingRows.map((r) => String(r.token_id));
+  let cardQuery = db
+    .from("cards")
+    .select("token_id, player_id, tier")
+    .in("token_id", tokenIds);
+  if (tierFilter !== null) cardQuery = cardQuery.eq("tier", tierFilter);
+  if (playerParam) cardQuery = cardQuery.eq("player_id", playerParam.trim().toLowerCase());
 
-  // Derive nation/position from lib/data and apply post-fetch filters
+  const cardRes = await cardQuery;
+  if (cardRes.error) {
+    return Response.json(
+      { error: `Supabase error: ${cardRes.error.message}` },
+      { status: 500 }
+    );
+  }
+
+  type CardRow = { token_id: string; player_id: string; tier: number };
+  const cardByToken = new Map<string, CardRow>(
+    ((cardRes.data ?? []) as unknown as CardRow[]).map((c) => [String(c.token_id), c]),
+  );
+
+  // Join (preserving price order) and apply derived nation/position filters.
   const listings: RentalListing[] = [];
-  for (const row of rows) {
-    const pid = row.cards.player_id as `0x${string}`;
+  for (const row of listingRows) {
+    const card = cardByToken.get(String(row.token_id));
+    if (!card) continue; // card missing or filtered out by tier/player
+    const pid = card.player_id as `0x${string}`;
     const nation = nationOf(pid) ?? null;
     const position = positionOf(pid) ?? null;
 
-    // Apply post-fetch filters for nation and position (derived, not in DB)
     if (nationParam && nation !== nationParam) continue;
     if (positionParam && position !== positionParam) continue;
 
@@ -135,8 +151,8 @@ export async function GET(request: NextRequest): Promise<Response> {
       owner: row.owner,
       mode: row.mode,
       priceValue: String(row.price_value),
-      playerId: row.cards.player_id,
-      tier: row.cards.tier,
+      playerId: card.player_id,
+      tier: card.tier,
       nation,
       position,
     });

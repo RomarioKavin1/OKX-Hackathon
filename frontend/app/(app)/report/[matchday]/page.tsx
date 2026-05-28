@@ -13,6 +13,7 @@
  */
 
 import type { Metadata } from "next";
+import { SectionHeading } from "@/components/ui";
 import { ReportIsland } from "./ReportIsland";
 
 interface PageProps {
@@ -22,7 +23,7 @@ interface PageProps {
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { matchday } = await params;
   return {
-    title: `Matchday ${matchday} Report — ManagerCup`,
+    title: `Matchday ${matchday} Report — PANENKA`,
     description: `Your day-after performance report for matchday ${matchday}.`,
   };
 }
@@ -33,9 +34,8 @@ export default async function ReportPage({ params }: PageProps) {
 
   if (!Number.isFinite(matchdayNum) || matchdayNum < 0) {
     return (
-      <main className="flex max-w-2xl flex-col gap-4">
-        <h1 className="text-2xl font-bold">Invalid Matchday</h1>
-        <p className="text-sm text-zinc-500">
+      <main className="flex max-w-2xl flex-col gap-6 py-4">
+        <p className="text-sm text-muted">
           The matchday parameter must be a non-negative integer.
         </p>
       </main>
@@ -43,16 +43,11 @@ export default async function ReportPage({ params }: PageProps) {
   }
 
   return (
-    <main className="flex max-w-3xl flex-col gap-6">
-      <header>
-        <h1 className="text-2xl font-bold">
-          Matchday {matchdayNum} — Performance Report
-        </h1>
-        <p className="text-sm text-zinc-500 mt-1">
-          Your post-match analytics. Connect wallet to view your personalized
-          breakdown.
-        </p>
-      </header>
+    <main className="flex max-w-3xl flex-col gap-8 py-4">
+      <SectionHeading
+        kicker={`Matchday ${matchdayNum}`}
+        title="Performance Report"
+      />
 
       {/* Client island: reads wallet from Privy, fetches /api/report, renders charts */}
       <ReportIsland matchday={matchdayNum} />
