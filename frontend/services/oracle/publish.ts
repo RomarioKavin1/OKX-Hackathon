@@ -16,6 +16,17 @@
  * Run manually (when signer key is configured):
  *   npx tsx services/oracle/publish.ts <matchday>
  *
+ * ─── Multi-signer support ────────────────────────────────────────────────────
+ * ScoreOracle is multi-sig (N-of-M threshold).  A single worker may hold
+ * multiple signer keys (useful during testnet bootstrap).  Configure via:
+ *   SIGNER_KEYS=0xkey1,0xkey2,...   (preferred, comma-separated)
+ *   PRIVATE_KEY=0xkey               (fallback, single key)
+ * Both score-root and payout-root submissions loop over all configured keys.
+ * A signer that has already voted for a matchday/contest is skipped (idempotent
+ * re-runs).  An already-finalized matchday/contest short-circuits the loop.
+ * The Supabase mirror upsert happens once after the loop using the last
+ * successful receipt.
+ *
  * ─── Score/DNP/Payout build flow ────────────────────────────────────────────
  * 1. Load committed lineups for `matchday` from Supabase (lineups table).
  * 2. Load match_events rows for the matchday; build eventsByPlayerId Map.
@@ -46,6 +57,7 @@
 import { config } from "dotenv";
 import { resolve } from "node:path";
 import type { Address } from "viem";
+import type { WalletClient } from "viem";
 import type { MatchEvents } from "@/lib/types";
 import { Tier } from "@/lib/types";
 import { supabaseAdmin } from "@/lib/supabase/server";
@@ -61,6 +73,63 @@ import {
 } from "./roots";
 import type { ScoredEntrant } from "@/lib/business/contest";
 import { isEligibleForContest } from "@/lib/business/lineup";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Multi-signer loop helper
+// ─────────────────────────────────────────────────────────────────────────────
+
+type WaitForResult = Awaited<ReturnType<typeof waitFor>>;
+
+/**
+ * submitRootWithSigners — attempt a submission via each wallet in order.
+ *
+ * Returns the last successful receipt.  If every wallet fails the promise
+ * rejects with a summary error.  Individual failures are logged but do not
+ * abort the loop — this handles the common cases:
+ *   • signer already voted   → AlreadyExists (idempotent re-run, continue)
+ *   • matchday/contest already finalized → AlreadyExists (stop early)
+ *   • signer not authorised  → NotAuthorized (skip, try next)
+ *   • transient RPC error    → log and continue
+ *
+ * @param wallets   ordered list of script wallet clients
+ * @param submitFn  async function that submits the root for one wallet;
+ *                  should return the tx hash on success, throw on failure
+ * @param label     human-readable label for logging (e.g. "scoreRoot matchday=1")
+ */
+export async function submitRootWithSigners(
+  wallets: WalletClient[],
+  submitFn: (wallet: WalletClient) => Promise<string>,
+  label: string,
+): Promise<WaitForResult> {
+  let lastReceipt: WaitForResult | null = null;
+
+  for (const wallet of wallets) {
+    const addr = wallet.account?.address ?? "(unknown)";
+    try {
+      const txHash = await submitFn(wallet);
+      const receipt = await waitFor(txHash as `0x${string}`);
+      console.log(
+        `[publish] signer ${addr} submitted ${label} in block ${receipt.blockNumber} (${receipt.status})`,
+      );
+      lastReceipt = receipt;
+    } catch (err) {
+      const msg = (err as Error).message ?? String(err);
+      // AlreadyExists covers both "already voted" and "already finalized".
+      // If finalized, further signers will also revert — short-circuit.
+      if (msg.includes("AlreadyExists") && msg.toLowerCase().includes("finali")) {
+        console.log(`[publish] signer ${addr} ${label}: already finalized — stopping loop early`);
+        break;
+      }
+      // Already voted (idempotent re-run) or not authorised — log and try next.
+      console.warn(`[publish] signer ${addr} ${label} failed: ${msg}`);
+    }
+  }
+
+  if (!lastReceipt) {
+    throw new Error(`[publish] No signer successfully submitted ${label}`);
+  }
+  return lastReceipt;
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types for Supabase row shapes (partial — only fields we use)
@@ -107,14 +176,23 @@ interface ContestEntryRow {
 /**
  * Build and publish score/DNP/payout Merkle roots for `matchday`.
  *
- * Requires PRIVATE_KEY env var to be the oracle signer.  If the key is not
- * the signer role, the on-chain calls will revert.
+ * Requires SIGNER_KEYS (comma-separated 0x-prefixed private keys) or
+ * PRIVATE_KEY (single key fallback) to be set in the environment.
+ * All configured keys will be used to submit the root, enabling N-of-M
+ * multi-sig finalization from a single worker.
  */
 export async function publishMatchday(matchday: number): Promise<void> {
-  const pk = process.env.PRIVATE_KEY as `0x${string}` | undefined;
-  if (!pk) throw new Error("PRIVATE_KEY (0x-prefixed) not set in env");
+  // ── Parse signer keys ──────────────────────────────────────────────────────
+  const keysEnv = process.env.SIGNER_KEYS ?? process.env.PRIVATE_KEY;
+  if (!keysEnv) throw new Error("SIGNER_KEYS or PRIVATE_KEY (0x-prefixed) must be set in env");
+  const keys = keysEnv
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean) as `0x${string}`[];
+  if (keys.length === 0) throw new Error("[publish] no signer keys parsed from env");
+  const wallets = keys.map((pk) => getScriptWalletClient(pk));
+  console.log(`[publish] ${wallets.length} signer(s) configured`);
 
-  const wallet = getScriptWalletClient(pk);
   const db = supabaseAdmin();
 
   console.log(`[publish] matchday=${matchday}`);
@@ -219,14 +297,16 @@ export async function publishMatchday(matchday: number): Promise<void> {
   console.log(`[publish] scoreRoot=${scoreRoot}`);
   console.log(`[publish] dnpRoot=${dnpRoot} (${dnpTokenIds.size} DNP tokenIds)`);
 
-  // ── 8. submitScoreRoot(wallet, matchday, scoreRoot, dnpRoot) ─────────────────
+  // ── 8. submitScoreRoot — loop over all configured signers ───────────────────
   // ABI: ScoreOracle.submitRoot(uint256 matchday, bytes32 scoreRoot, bytes32 dnpRoot)
   // writes.ts: submitScoreRoot(wallet, matchday, scoreRoot, dnpRoot)
-  const scoreTx = await submitScoreRoot(wallet, matchday, scoreRoot, dnpRoot);
-  const scoreReceipt = await waitFor(scoreTx);
-  console.log(`[publish] submitScoreRoot mined in block ${scoreReceipt.blockNumber} (${scoreReceipt.status})`);
+  const scoreReceipt = await submitRootWithSigners(
+    wallets,
+    (w) => submitScoreRoot(w, matchday, scoreRoot, dnpRoot),
+    `scoreRoot matchday=${matchday}`,
+  );
 
-  // Mirror to score_roots table
+  // Mirror to score_roots table (once, after the last successful submission)
   await db.from("score_roots").upsert({
     matchday,
     score_root: scoreRoot,
@@ -302,13 +382,13 @@ export async function publishMatchday(matchday: number): Promise<void> {
       claims.map((c) => [c.account.toLowerCase(), c]),
     );
 
-    // ── 9f. submitPayoutRoot(wallet, contestId, root) ────────────────────────
+    // ── 9f. submitPayoutRoot — loop over all configured signers ──────────────
     // ABI: ScoreOracle.submitPayoutRoot(uint256 contestId, bytes32 root)
     // writes.ts: submitPayoutRoot(wallet, contestId, root)
-    const payoutTx = await submitPayoutRoot(wallet, contestId, payoutRoot);
-    const payoutReceipt = await waitFor(payoutTx);
-    console.log(
-      `[publish] contest ${contestId}: submitPayoutRoot mined in block ${payoutReceipt.blockNumber}`,
+    const payoutReceipt = await submitRootWithSigners(
+      wallets,
+      (w) => submitPayoutRoot(w, contestId, payoutRoot),
+      `payoutRoot contest=${contestId}`,
     );
 
     // ── 9g. Persist ranks/payouts/proofs to scores ────────────────────────
