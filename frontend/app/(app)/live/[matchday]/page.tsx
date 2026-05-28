@@ -143,7 +143,16 @@ export default function LiveMatchdayPage({
   useEffect(() => {
     if (!Number.isFinite(matchday)) return;
 
-    const client = supabaseBrowser();
+    let client: ReturnType<typeof supabaseBrowser>;
+    try {
+      client = supabaseBrowser();
+    } catch (e) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setLoadError(
+        `Live updates unavailable: ${(e as Error).message}. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY in env.`,
+      );
+      return;
+    }
 
     // ── Initial fetch: populate leaderboard without waiting for a change event
     const fetchInitial = async () => {
