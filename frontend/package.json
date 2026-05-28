@@ -10,7 +10,9 @@
     "test": "vitest run",
     "test:it": "vitest run --config vitest.it.config.ts",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "seed": "DRY=0 tsx scripts/seed-players.ts",
+    "seed:dry": "DRY=1 tsx scripts/seed-players.ts"
   },
   "dependencies": {
     "@privy-io/react-auth": "^3.27.2",
