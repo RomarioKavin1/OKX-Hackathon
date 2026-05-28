@@ -6,7 +6,8 @@
  * Sections:
  *   1. USDC Faucet — claim 1 000 test USDC via MockUSDC.faucet(amount).
  *   2. Chip Balances — live read of each chip type via ChipNFT.balanceOf.
- *   3. Claim History — placeholder (live data requires indexer / Supabase query).
+ *   3. Claim History — live read of payout-eligible contest results from
+ *      /api/profile/claims, enriched with on-chain claimed status.
  *   4. Tutorial — "Replay tutorial" button clears the per-wallet onboarding
  *      localStorage flag so the /onboard walkthrough shows again.
  *
@@ -227,13 +228,116 @@ function ChipBalancesSection({ address }: ChipBalancesSectionProps) {
 
 // ---------------------------------------------------------------------------
 
-function ClaimHistorySection() {
+interface ClaimRow {
+  matchday: number;
+  contestId: string;
+  score: number;
+  rank: number | null;
+  payout: string;        // USDC base units (string-encoded bigint)
+  claimed: boolean;
+  proof: string[];
+}
+
+interface ClaimHistorySectionProps {
+  address: Address;
+}
+
+function ClaimHistorySection({ address }: ClaimHistorySectionProps) {
+  const [claims, setClaims] = useState<ClaimRow[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(
+          `/api/profile/claims?wallet=${address.toLowerCase()}&limit=25`,
+        );
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const body = (await res.json()) as { claims: ClaimRow[] };
+        if (!cancelled) {
+          startTransition(() => {
+            setClaims(body.claims);
+            setError(null);
+          });
+        }
+      } catch (e) {
+        if (!cancelled) {
+          startTransition(() => setError((e as Error).message));
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [address]);
+
+  if (error) {
+    return (
+      <Section title="Claim History">
+        <p className="text-sm text-rose-600">Failed to load: {error}</p>
+      </Section>
+    );
+  }
+
+  if (claims === null) {
+    return (
+      <Section title="Claim History">
+        <p className="text-sm text-zinc-500">Loading…</p>
+      </Section>
+    );
+  }
+
+  if (claims.length === 0) {
+    return (
+      <Section title="Claim History">
+        <p className="text-sm text-zinc-500">
+          No payouts yet. Win a paid contest and your claim history appears here.
+        </p>
+      </Section>
+    );
+  }
+
   return (
     <Section title="Claim History">
-      <p className="text-sm text-zinc-500 italic">
-        Full claim history (contests, season leaderboard, insurance payouts)
-        will be available here once the indexer sync is live.
+      <p className="mb-3 text-sm text-zinc-600">
+        Your last {claims.length} payout-eligible contest results. Unclaimed
+        prizes can be collected from each contest page.
       </p>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left text-xs uppercase text-zinc-500 border-b border-zinc-200">
+              <th className="py-2 pr-3">Matchday</th>
+              <th className="py-2 pr-3">Contest</th>
+              <th className="py-2 pr-3">Rank</th>
+              <th className="py-2 pr-3">Payout</th>
+              <th className="py-2 pr-3">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {claims.map((c) => (
+              <tr key={`${c.matchday}-${c.contestId}`} className="border-b border-zinc-100 last:border-0">
+                <td className="py-2 pr-3 font-mono">{c.matchday}</td>
+                <td className="py-2 pr-3 font-mono">#{c.contestId}</td>
+                <td className="py-2 pr-3 font-mono">{c.rank ?? "—"}</td>
+                <td className="py-2 pr-3 font-mono">{fmtUsdc(BigInt(c.payout))} USDC</td>
+                <td className="py-2 pr-3">
+                  {c.claimed ? (
+                    <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800">
+                      Claimed
+                    </span>
+                  ) : (
+                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">
+                      Unclaimed
+                    </span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </Section>
   );
 }
@@ -342,7 +446,7 @@ export default function SettingsPage() {
 
       <ChipBalancesSection address={address} />
 
-      <ClaimHistorySection />
+      <ClaimHistorySection address={address} />
 
       <TutorialSection address={address} />
 
