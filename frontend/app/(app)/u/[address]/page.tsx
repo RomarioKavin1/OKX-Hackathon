@@ -1,5 +1,6 @@
 import type { ProfileCard, TierSummary } from "@/app/api/profile/route";
 import { PLAYER_BY_ID } from "@/lib/data/players";
+import { fmtUsdc } from "@/lib/business/format";
 
 // ── Module-scope sub-components ───────────────────────────────────────────────
 
@@ -83,6 +84,57 @@ function SummaryBar({ summary }: SummaryBarProps) {
   );
 }
 
+// ── Career Stats ───────────────────────────────────────────────────────────────
+
+interface CareerStats {
+  matchdaysPlayed: number;
+  totalPoints: number;
+  bestDayScore: number;
+  totalWon: string;
+  totalSpent: string;
+  seasonRank: number | null;
+}
+
+interface CareerStatsServerProps {
+  stats: CareerStats;
+}
+
+function CareerStatsServer({ stats }: CareerStatsServerProps) {
+  return (
+    <section className="rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-4">
+      <h2 className="mb-3 text-sm font-semibold text-zinc-700">Career Stats</h2>
+      <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm sm:grid-cols-3">
+        <div>
+          <dt className="text-xs text-zinc-500">Matchdays played</dt>
+          <dd className="font-mono font-medium">{stats.matchdaysPlayed}</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-zinc-500">Total points</dt>
+          <dd className="font-mono font-medium">{stats.totalPoints.toFixed(1)}</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-zinc-500">Best day</dt>
+          <dd className="font-mono font-medium">{stats.bestDayScore.toFixed(1)}</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-zinc-500">Total won</dt>
+          <dd className="font-mono font-medium">{fmtUsdc(BigInt(stats.totalWon))} USDC</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-zinc-500">Total spent</dt>
+          <dd className="font-mono font-medium">{fmtUsdc(BigInt(stats.totalSpent))} USDC</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-zinc-500">Season rank</dt>
+          <dd className="font-mono font-medium">
+            {stats.seasonRank === null ? "—" : `#${stats.seasonRank}`}
+          </dd>
+        </div>
+      </dl>
+    </section>
+  );
+}
+
 // ── Page (server component, async params) ────────────────────────────────────
 
 interface ProfileData {
@@ -106,19 +158,32 @@ export default async function PublicProfilePage({
       : "http://localhost:3000");
 
   let profileData: ProfileData | null = null;
+  let careerData: CareerStats | null = null;
   let fetchError: string | null = null;
 
   try {
-    const res = await fetch(
-      `${baseUrl}/api/profile?address=${encodeURIComponent(address)}`,
-      // Opt out of full-route caching so the data is fresh per request
-      { cache: "no-store" }
-    );
-    if (!res.ok) {
-      const body = (await res.json().catch(() => ({}))) as { error?: string };
-      fetchError = body.error ?? `HTTP ${res.status}`;
+    const [profileRes, careerRes] = await Promise.all([
+      fetch(
+        `${baseUrl}/api/profile?address=${encodeURIComponent(address)}`,
+        // Opt out of full-route caching so the data is fresh per request
+        { cache: "no-store" }
+      ),
+      fetch(
+        `${baseUrl}/api/profile/career?wallet=${encodeURIComponent(address.toLowerCase())}`,
+        { cache: "no-store" }
+      ),
+    ]);
+
+    if (!profileRes.ok) {
+      const body = (await profileRes.json().catch(() => ({}))) as { error?: string };
+      fetchError = body.error ?? `HTTP ${profileRes.status}`;
     } else {
-      profileData = (await res.json()) as ProfileData;
+      profileData = (await profileRes.json()) as ProfileData;
+    }
+
+    // Career stats failure is non-fatal — render profile without them
+    if (careerRes.ok) {
+      careerData = (await careerRes.json()) as CareerStats;
     }
   } catch (err) {
     fetchError = err instanceof Error ? err.message : "Unknown error";
@@ -153,6 +218,9 @@ export default async function PublicProfilePage({
             </h2>
             <SummaryBar summary={profileData.summary} />
           </section>
+
+          {/* Career stats */}
+          {careerData && <CareerStatsServer stats={careerData} />}
 
           {/* Card list */}
           {profileData.cards.length === 0 ? (

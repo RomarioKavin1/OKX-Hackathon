@@ -6,6 +6,7 @@ import { useWallets } from "@privy-io/react-auth";
 import type { Address } from "viem";
 import type { PortfolioCard, CardState } from "@/app/api/portfolio/route";
 import { PLAYER_BY_ID } from "@/lib/data/players";
+import { fmtUsdc } from "@/lib/business/format";
 
 // ── Module-scope sub-components ───────────────────────────────────────────────
 
@@ -105,6 +106,98 @@ function StateGroup({ state, cards }: StateGroupProps) {
           <CardRow key={c.tokenId} card={c} />
         ))}
       </div>
+    </section>
+  );
+}
+
+// ── Career Stats ───────────────────────────────────────────────────────────────
+
+interface CareerStats {
+  matchdaysPlayed: number;
+  totalPoints: number;
+  bestDayScore: number;
+  totalWon: string;
+  totalSpent: string;
+  seasonRank: number | null;
+}
+
+interface CareerStatsSectionProps {
+  address: string;
+}
+
+function CareerStatsSection({ address }: CareerStatsSectionProps) {
+  const [stats, setStats] = useState<CareerStats | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/profile/career?wallet=${address.toLowerCase()}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const body = (await res.json()) as CareerStats;
+        if (!cancelled) {
+          setStats(body);
+          setError(null);
+        }
+      } catch (e) {
+        if (!cancelled) setError((e as Error).message);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [address]);
+
+  if (error) {
+    return (
+      <section className="rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-4">
+        <h2 className="text-sm font-semibold text-zinc-700">Career Stats</h2>
+        <p className="mt-1 text-xs text-rose-600">Failed to load: {error}</p>
+      </section>
+    );
+  }
+
+  if (stats === null) {
+    return (
+      <section className="rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-4">
+        <h2 className="text-sm font-semibold text-zinc-700">Career Stats</h2>
+        <p className="mt-1 text-xs text-zinc-500">Loading…</p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-4">
+      <h2 className="mb-3 text-sm font-semibold text-zinc-700">Career Stats</h2>
+      <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm sm:grid-cols-3">
+        <div>
+          <dt className="text-xs text-zinc-500">Matchdays played</dt>
+          <dd className="font-mono font-medium">{stats.matchdaysPlayed}</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-zinc-500">Total points</dt>
+          <dd className="font-mono font-medium">{stats.totalPoints.toFixed(1)}</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-zinc-500">Best day</dt>
+          <dd className="font-mono font-medium">{stats.bestDayScore.toFixed(1)}</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-zinc-500">Total won</dt>
+          <dd className="font-mono font-medium">{fmtUsdc(BigInt(stats.totalWon))} USDC</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-zinc-500">Total spent</dt>
+          <dd className="font-mono font-medium">{fmtUsdc(BigInt(stats.totalSpent))} USDC</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-zinc-500">Season rank</dt>
+          <dd className="font-mono font-medium">
+            {stats.seasonRank === null ? "—" : `#${stats.seasonRank}`}
+          </dd>
+        </div>
+      </dl>
     </section>
   );
 }
@@ -224,16 +317,8 @@ export default function PortfolioPage() {
         </div>
       )}
 
-      {/* Career stats placeholder */}
-      {!loading && address && cards.length > 0 && (
-        <section className="rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-4">
-          <h2 className="text-sm font-semibold text-zinc-700">Career Stats</h2>
-          <p className="mt-1 text-xs text-zinc-500">
-            Season statistics will appear here once the first matchday is
-            finalized.
-          </p>
-        </section>
-      )}
+      {/* Career stats */}
+      {address && <CareerStatsSection address={address} />}
     </main>
   );
 }
