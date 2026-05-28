@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Turn the already-deployed ManagerCup contracts + SDK into a fully playable, on-chain-verifiable World Cup fantasy game on X Layer testnet — real UI, real API-Football scoring, real Merkle payouts, a Supabase-backed read layer, and OKX OnchainOS skills woven in as first-class features — with no mocks, stubs, or fillers.
+**Goal:** Turn the already-deployed ManagerCup contracts + SDK into a fully playable, on-chain-verifiable World Cup fantasy game on X Layer testnet — real UI, real API-Football scoring, real Merkle payouts, and a Supabase-backed read layer — with no mocks, stubs, or fillers.
 
-**Architecture:** Build entirely on the existing `frontend/` (Next.js 16.2.6 App Router + `lib/` SDK + business logic) and the deployed `contracts/`. Add: (1) a **Supabase**-backed indexer (`frontend/services/indexer`, viem logs → Supabase via service-role) + read access (Next route handlers in `app/api/*` for computed views, direct `supabase-js` reads for browse); (2) a real scoring pipeline (`frontend/services/oracle`) that ingests API-Football, feeds the existing `scoreCard` engine, and posts genuine score/DNP/payout Merkle roots; (3) the missing scoring inputs — player content + **trait** (§4.2) and **formation-synergy** (§4.3) computation (`frontend/lib/data`, `frontend/lib/business/synergy.ts`); (4) all 13 UI screens; (5) a live-scoring replay (`frontend/services/livescore` → Supabase Realtime) + matchday lifecycle cron (`frontend/services/lifecycle`); (6) a **server-side `OkxService`** (`frontend/lib/okx`) wrapping the `onchainos` CLI, integrated into write preflight (gateway simulate/broadcast), contest entry (dex-swap any-token), marketplace (security tx-scan + approvals), premium analytics (x402), and public profiles (wallet-portfolio); (7) a public `verifier/` CLI. Every user-facing number is recomputable from on-chain roots + public match data by `frontend/lib/business` (shared by oracle, API projections, and verifier).
+**Architecture:** Build entirely on the existing `frontend/` (Next.js 16.2.6 App Router + `lib/` SDK + business logic) and the deployed `contracts/`. Add: (1) a **Supabase**-backed indexer (`frontend/services/indexer`, viem logs → Supabase via service-role) + read access (Next route handlers in `app/api/*` for computed views, direct `supabase-js` reads for browse); (2) a real scoring pipeline (`frontend/services/oracle`) that ingests API-Football, feeds the existing `scoreCard` engine, and posts genuine score/DNP/payout Merkle roots; (3) the missing scoring inputs — player content + **trait** (§4.2) and **formation-synergy** (§4.3) computation (`frontend/lib/data`, `frontend/lib/business/synergy.ts`); (4) all 13 UI screens; (5) a live-scoring replay (`frontend/services/livescore` → Supabase Realtime) + matchday lifecycle cron (`frontend/services/lifecycle`); (6) a public `verifier/` CLI. Every user-facing number is recomputable from on-chain roots + public match data by `frontend/lib/business` (shared by oracle, API projections, and verifier).
 
-**Tech Stack:** TypeScript, Next.js 16.2.6 (App Router) + React 19, wagmi v3 + viem v2, @tanstack/react-query v5, Tailwind v4 (CSS-config), `merkletreejs`, **Supabase** (`@supabase/supabase-js` + `@supabase/ssr`, Supabase CLI for migrations), `vitest` (new), `tsx`, API-Football (`v3.football.api-sports.io`), OKX OnchainOS `onchainos` CLI (server-side via `child_process`).
+**Tech Stack:** TypeScript, Next.js 16.2.6 (App Router) + React 19, **Privy** (`@privy-io/react-auth`) for wallet auth + viem v2 for contract reads/writes, @tanstack/react-query v5, Tailwind v4 (CSS-config), `merkletreejs`, **Supabase** (`@supabase/supabase-js` + `@supabase/ssr`, Supabase CLI for migrations), `vitest` (new), `tsx`, API-Football (`v3.football.api-sports.io`).
 
 ---
 
@@ -42,23 +42,22 @@ Wiring (recorded): `CardNFT.minter=[PackSale, deployer]`, `CardNFT.rentalMarket=
 **SDK + business logic (`frontend/lib/`) — consume, don't rebuild:**
 
 - `lib/contracts/`: `xLayerTestnet` (id 1952), `ACTIVE_CHAIN`, `ADDRESSES: Record<ContractName, Address>`, `ABIS`, `contract(name)`; `lib/abis/*` (auto-gen via `scripts/gen-abis.mjs`).
-- `lib/clients.ts`: `publicClient`, `getBrowserWalletClient()` (picks `window.okxwallet ?? window.ethereum`), `getScriptWalletClient(pk)`.
-- `lib/wagmi.ts`: `wagmiConfig` (injected connector, chain 1952, `ssr: true`).
+- `lib/clients.ts`: `publicClient`, `getScriptWalletClient(pk)` (scripts). `getBrowserWalletClient()` (injected `window.okxwallet`) still exists, but **UI writes use a Privy-derived viem `WalletClient`** — Task 3.2 adds `getPrivyWalletClient(wallet)` built from `await wallet.getEthereumProvider()`.
+- Wallet auth via **Privy** (`@privy-io/react-auth` `PrivyProvider`); `lib/wagmi.ts` was removed (no wagmi config / connectors).
 - `lib/actions/reads.ts`: `usdcBalance`, `usdcAllowance`, `cardOwner`, `cardUser`, `cardController`, `cardMeta`, `cardStats`, `chipBalance`, `staminaOf`, `hasLineup`, `matchdayIsOpen`, `rentalListing`, `marketListing`, `packCommit`, `contestInfo`, `scoreRoot`, `payoutRootFinalized`.
 - `lib/actions/writes.ts`: `waitFor`, `usdcFaucet/Approve/Transfer`, `setPlayerStats`, `mintCard`, `airdropStarterSquad`, `claimBaselineChips`, `setPackPrice/PlayerPool`, `buyPack`, `revealPack`, `approveCard`, `listForSale`, `buyListing`, `listForRent`, `rentCard`, `settleRental`, `cancelRental`, `commitLineup`, `configureMatchday`, `createContest`, `enterContest`, `takeRake`, `claimContest`, `claimSeason`, `insureRental`, `claimDnp`, `submitScoreRoot`, `submitPayoutRoot`, `submitSeasonRoot`. (Each takes `wallet: WalletClient` first, optional `from?: Address` last, returns `Promise<Hex>`.)
 - `lib/business/`: `scoring.ts` (`scoreCard`, `baseEventPoints`, `countrySynergyMult`, `captainMult`, `lineupTotal`, `CardScoreInput`), `merkle.ts` (`payoutLeaf`, `dnpLeaf`, `buildMerkleTree`, `buildPayoutTree`, `verifyProof`), `stamina.ts` (`applyStamina`, `staminaModifier`), `lineup.ts` (`validateLineup`, `isEligibleForContest`, `nationCounts`, `LineupDraft`), `fees.ts`, `pricing.ts`, `packs.ts`, `format.ts` (`toUsdc`, `fromUsdc`, `fmtUsdc`); barrel `lib/business/index.ts`.
 - `lib/types.ts`: `Tier`, `Stats`, `Position`, `Card`, `FormationName`, `ChipId`, `Lineup`, `MatchdayStatus`, `PricingMode`, `RentalListing`, `Rental`, `Contest`, **`MatchEvents`** (the scoring input), `ScoredCard`, `PayoutLeaf`, `MerkleClaim`.
 - `lib/constants.ts`: `USDC_DECIMALS`, `RENTAL_SPLIT`, `MARKETPLACE_SPLIT`, `INSURANCE`, `TIER_SUPPLY_CAP`, `TIER_BONUS`, `PACK_TIER_CUM`, `PACK_NAME`, `STAMINA`, `OUT_OF_POSITION_PENALTY`, `CAPTAIN_MULT`, `COUNTRY_SYNERGY`, `FORMATIONS` (6 × 11-slot `Position[]`), `LINEUP_SIZE`, all `SCORE_*` tables, `CONTEST_TIERS`, `DEFAULT_CONTEST_RAKE_BPS=800`.
 - `lib/lifecycle.ts`: `runFullLifecycle(wallet, account, log?)` — proven on-chain end-to-end (10 phases). `scripts/{demo-flow,lifecycle,read-state}.ts`, `scripts/gen-abis.mjs`, `scripts/_env.ts` (loads repo-root `../.env`, exports `wallet`/`account`/`publicClient`).
-- `app/`: `layout.tsx` (Geist fonts, `<Providers>`), `providers.tsx` (`WagmiProvider`+`QueryClientProvider`), `page.tsx` (connect-wallet + USDC balance demo), `globals.css` (Tailwind v4 `@theme`).
+- `app/`: `layout.tsx` (Geist fonts, `<Providers>`), `providers.tsx` (`PrivyProvider`, gated on `NEXT_PUBLIC_PRIVY_APP_ID`), `page.tsx` (Privy login + USDC balance demo), `demo/page.tsx` + `lib/demo/phases.ts` (on-chain lifecycle demo), `globals.css` (Tailwind v4 `@theme`).
 
-## The five concrete gaps this plan fills
+## The four concrete gaps this plan fills
 
 1. **Scoring inputs unimplemented.** `scoreCard` reads `traitModifier?` and `formationSynergyMult?` but **nothing computes them** (both default to `1`); there is no `Trait` type, no trait table, no formation-synergy table. → Phase 2.
 2. **No read layer.** Aggregate views (browse, portfolio, leaderboards, day-after) have no store; scripts brute-force `ownerOf` 1..5000. → Phase 1 (Supabase + indexer).
 3. **No real scoring.** Lifecycle uses `scoreRoot=keccak256("scores-N")` and "single entrant = net pool"; no API-Football, no §5.2 ranked payouts. → Phase 4.
 4. **No product UI.** Only `/` exists. → Phases 3, 5, 6.
-5. **OKX skills not integrated.** 22 skills installed but unused. → woven through Phases 3–7 via `OkxService`.
 
 Also: **no indexer `fromBlock`** is recorded anywhere (no `broadcast/`, no block in the deployments JSON) → Phase 0 sources it. **Next.js 16.2.6** is post-cutoff → read bundled docs. **No tests/CI** → Phase 0 adds vitest + CI.
 
@@ -66,7 +65,7 @@ Also: **no indexer `fromBlock`** is recorded anywhere (no `broadcast/`, no block
 
 - All commands run from `frontend/` unless noted. Services live in `frontend/services/*` and import `../lib`. The verifier lives in `frontend/verifier/`.
 - Tests use **vitest**. Pure-logic tasks are **TDD** (failing test → implement → pass → commit). Indexer/oracle/API tasks use integration tests against the live testnet + a Supabase test schema. UI tasks are verified by running `npm run dev` and using the feature in a browser (project rule) — type checks/tests verify code, not feature correctness.
-- Secrets live in the **repo-root `.env`** (gitignored, loaded by `scripts/_env.ts` and by services). New vars: `API_FOOTBALL_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `OKX_API_KEY`, `OKX_SECRET_KEY`, `OKX_PASSPHRASE`. Browser-public vars (in `frontend/.env.local`, prefixed `NEXT_PUBLIC_`): `NEXT_PUBLIC_SUPABASE_URL=https://jwylnndtmfyxnngfyuqq.supabase.co`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_zADdGfIGyo3CAkIsol-roA_TXcDjyMA`, `NEXT_PUBLIC_WC_PROJECT_ID=<walletconnect-cloud-project-id>` (FR-O2).
+- Secrets live in the **repo-root `.env`** (gitignored, loaded by `scripts/_env.ts` and by services). New vars: `API_FOOTBALL_KEY`, `SUPABASE_SERVICE_ROLE_KEY`. Browser-public vars (in `frontend/.env.local`, prefixed `NEXT_PUBLIC_`): `NEXT_PUBLIC_SUPABASE_URL=https://jwylnndtmfyxnngfyuqq.supabase.co`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_zADdGfIGyo3CAkIsol-roA_TXcDjyMA`, `NEXT_PUBLIC_PRIVY_APP_ID=<privy-app-id>` (FR-O1/O2 — Privy login modal).
 - Commit after every green step. Never use `--no-verify`. Never commit secrets.
 - **Supabase security rule (non-negotiable):** every table in `public` has RLS enabled. Browse tables get a read-only `SELECT TO anon` policy. All writes go through the **service-role** key from server-only code (indexer/oracle/onboarding) — never from the browser, never `NEXT_PUBLIC_`.
 
@@ -74,7 +73,7 @@ Also: **no indexer `fromBlock`** is recorded anywhere (no `broadcast/`, no block
 
 # PHASE 0 — Foundations, tooling, Supabase, OKX service skeleton
 
-Goal: install deps + read Next docs, vitest harness, Supabase project wired with schema + RLS, address-drift guard, deploy-block discovery, `OkxService` skeleton with a CLI auth smoke test, app shell/nav, CI. Independently verifiable; unblocks everything.
+Goal: install deps + read Next docs, vitest harness, Supabase project wired with schema + RLS, address-drift guard, deploy-block discovery, app shell/nav, CI. Independently verifiable; unblocks everything.
 
 ### Task 0.1: Install deps, gitignore `.agents/`, read Next 16 docs
 
@@ -97,13 +96,9 @@ skills-lock.json
 SUPABASE_SERVICE_ROLE_KEY=YOUR_SUPABASE_SERVICE_ROLE_KEY
 # Match data
 API_FOOTBALL_KEY=YOUR_API_FOOTBALL_KEY
-# OKX OnchainOS (server-side onchainos CLI auth)
-OKX_API_KEY=YOUR_OKX_API_KEY
-OKX_SECRET_KEY=YOUR_OKX_SECRET_KEY
-OKX_PASSPHRASE=YOUR_OKX_PASSPHRASE
 ```
 
-- [ ] **Step 5:** Create `frontend/.env.local` (gitignored by `.env.*`) with the two `NEXT_PUBLIC_SUPABASE_*` values from Conventions plus `NEXT_PUBLIC_WC_PROJECT_ID` (WalletConnect Cloud project id, FR-O2). Confirm `git status` does NOT show `.env.local` or `.agents/`.
+- [ ] **Step 5:** Create `frontend/.env.local` (gitignored by `.env.*`) with the two `NEXT_PUBLIC_SUPABASE_*` values from Conventions plus `NEXT_PUBLIC_PRIVY_APP_ID` (Privy app id, FR-O1/O2). Confirm `git status` does NOT show `.env.local` or `.agents/`.
 - [ ] **Step 6: Commit** — `git add .gitignore .env.example && git commit -m "chore: ignore .agents, document new env vars"`.
 
 ### Task 0.2: vitest harness
@@ -450,87 +445,19 @@ npx tsx -e "import {supabaseAnonServer} from './lib/supabase/server'; const c=su
 Expected: read `ok`; `anon write blocked: true`. Also confirm the inverse for `disputes`: an anon `insert` into `disputes` **succeeds** (FR-T4 file path) while an anon `select` on `disputes` returns no rows / is denied.
 - [ ] **Step 5: Commit** — `git add supabase/migrations && git commit -m "feat: supabase schema + RLS (indexer tables, scores, onboarding guard)"`.
 
-### Task 0.7: `OkxService` skeleton + CLI auth smoke test
-
-> The OKX skills are all wrappers around ONE `onchainos` CLI binary (env-key auth). We invoke it server-side via `child_process.execFile` and parse JSON stdout. This service is the single integration point used by Phases 3–7.
-
-**Files:** Create `frontend/lib/okx/service.ts`, `frontend/lib/okx/types.ts`, `frontend/lib/okx/__tests__/service.test.ts`.
-
-- [ ] **Step 1:** Ensure the CLI exists: the user runs `! npx skills add okx/onchainos-skills` (already done) and `! onchainos --version` (installs `~/.local/bin/onchainos` on first skill use). Document the auth env trio in `.env`.
-- [ ] **Step 2: Write a failing test** `frontend/lib/okx/__tests__/service.test.ts`:
-
-```ts
-import { describe, it, expect } from "vitest";
-import { OkxService } from "../service";
-
-describe("OkxService", () => {
-  it("builds an execFile invocation with json output and passes auth env", () => {
-    const calls: { args: string[]; env: Record<string, string> }[] = [];
-    const svc = new OkxService({
-      bin: "onchainos",
-      env: { OKX_API_KEY: "k", OKX_SECRET_KEY: "s", OKX_PASSPHRASE: "p" },
-      runner: async (bin, args, env) => { calls.push({ args, env }); return JSON.stringify({ ok: true }); },
-    });
-    return svc.run(["wallet", "balance", "--chain", "xlayer_test"]).then((out) => {
-      expect(out).toEqual({ ok: true });
-      expect(calls[0].args).toContain("--output");
-      expect(calls[0].args).toContain("json");
-      expect(calls[0].env.OKX_API_KEY).toBe("k");
-    });
-  });
-});
-```
-
-- [ ] **Step 3: Implement** `frontend/lib/okx/service.ts` — a thin, injectable wrapper (the `runner` seam keeps it unit-testable without the binary):
-
-```ts
-import { execFile } from "node:child_process";
-
-type Runner = (bin: string, args: string[], env: Record<string, string>) => Promise<string>;
-
-const defaultRunner: Runner = (bin, args, env) =>
-  new Promise((resolve, reject) =>
-    execFile(bin, args, { env: { ...process.env, ...env }, maxBuffer: 1 << 24 }, (err, stdout, stderr) =>
-      err ? reject(new Error(`${bin} ${args.join(" ")} failed: ${stderr || err.message}`)) : resolve(stdout)));
-
-export interface OkxConfig { bin?: string; env?: Record<string, string>; runner?: Runner; }
-
-export class OkxService {
-  private bin: string; private env: Record<string, string>; private runner: Runner;
-  constructor(cfg: OkxConfig = {}) {
-    this.bin = cfg.bin ?? "onchainos";
-    this.env = cfg.env ?? {
-      OKX_API_KEY: process.env.OKX_API_KEY ?? "",
-      OKX_SECRET_KEY: process.env.OKX_SECRET_KEY ?? "",
-      OKX_PASSPHRASE: process.env.OKX_PASSPHRASE ?? "",
-    };
-    this.runner = cfg.runner ?? defaultRunner;
-  }
-  async run<T = unknown>(args: string[]): Promise<T> {
-    const withJson = args.includes("--output") ? args : [...args, "--output", "json"];
-    const stdout = await this.runner(this.bin, withJson, this.env);
-    return JSON.parse(stdout) as T;
-  }
-}
-```
-
-- [ ] **Step 4: Run** `npm test -- okx`. Expected: PASS.
-- [ ] **Step 5: Live smoke (manual, non-blocking)** — with real OKX env set, run `npx tsx -e "import {OkxService} from './lib/okx/service'; console.log(await new OkxService().run(['wallet','status']))"`. If the CLI flag is `--format`/`-o` instead of `--output json`, adjust `run()` to match the installed CLI's help (`onchainos wallet --help`) and re-run the unit test expectation accordingly. Document the verified flag.
-- [ ] **Step 5b: Capability probe (BLOCKING for Phases 3, 5, 6) — de-risk the headline integration.** The whole OKX surface assumes specific `onchainos` subcommands/flags that are NOT yet verified. Before any OKX-dependent feature is built, run `onchainos <group> --help` for every group the plan uses and record the REAL subcommand + flag shape (and one real JSON sample) in `docs/OKX-CLI.md`: `gateway` (simulate/gas → Task 3.2), `security` (tx-scan/approvals → Task 5.3), `portfolio` (all-balances → Task 5.5), `swap` (quote/execute + supported chains → Task 6.5), `payment`/x402 (`pay`/`charge` → Task 6.5). For each group, if the actual shape differs from the plan's assumption, **update that task's args before implementing it**. Any capability the installed CLI does NOT support is recorded as a known limitation on the transparency page (Task 7.4) — never faked, never silently degraded into a no-op without saying so.
-- [ ] **Step 6: Commit** — `git add lib/okx docs/OKX-CLI.md && git commit -m "feat: OkxService (server-side onchainos CLI wrapper) + capability probe"`.
+_(Task 0.7 removed — the OKX OnchainOS `onchainos` CLI integration was cut from scope. OKX **Wallet** connect remains via the **Privy** login modal in Task 0.8 and needs no OKX API keys. The numbering keeps 0.8/0.9 as-is.)_
 
 ### Task 0.8: App shell — nav, design tokens, route group
 
 > Read `node_modules/next/dist/docs/` first. This is Next 16: route groups `app/(app)/`, server components by default, `"use client"` only where hooks/wallet are used.
 
-**Files:** Create `frontend/app/(app)/layout.tsx`, `frontend/components/Nav.tsx`, `frontend/components/WalletButton.tsx`; modify `frontend/app/globals.css` (theme tokens), `frontend/lib/wagmi.ts` (connectors).
+**Files:** Create `frontend/app/(app)/layout.tsx`, `frontend/components/Nav.tsx`, `frontend/components/WalletButton.tsx`; modify `frontend/app/globals.css` (theme tokens). Wallet auth is **Privy** — `app/providers.tsx` already wraps the app in `PrivyProvider` (gated on `NEXT_PUBLIC_PRIVY_APP_ID`); `lib/wagmi.ts` was removed. (This supersedes the earlier wagmi/WalletConnect app-shell attempt — the repo adopted Privy.)
 
-- [ ] **Step 1:** Add **WalletConnect** to `lib/wagmi.ts` (FR-O2): `npm i @walletconnect/ethereum-provider`, then `connectors: [injected(), walletConnect({ projectId: process.env.NEXT_PUBLIC_WC_PROJECT_ID! })]` (per wagmi v3). Keep chain 1952, `ssr: true`. (`NEXT_PUBLIC_WC_PROJECT_ID` was added to `frontend/.env.local` in Task 0.1.)
-- [ ] **Step 1b:** Extract the connect/disconnect logic from `app/page.tsx` into `components/WalletButton.tsx` (`"use client"`, `useAccount/useConnect/useDisconnect`): a connector **picker** offering "Connect OKX Wallet" (injected, prefers `window.okxwallet`), "MetaMask" (injected), and "WalletConnect" (QR for mobile / other wallets) — satisfies FR-O1 + FR-O2.
+- [ ] **Step 1:** `components/WalletButton.tsx` (`"use client"`, FR-O1/O2): use Privy's `usePrivy()` (`ready`, `authenticated`, `login`, `logout`) + `useWallets()` (active wallet address). Disconnected → a single "Connect Wallet" button that opens the **Privy login modal** — which itself offers OKX Wallet / MetaMask / WalletConnect / embedded wallets, so one button satisfies FR-O1 (OKX Wallet) + FR-O2 (MetaMask + WalletConnect). Connected → truncated address + "Log out". If `NEXT_PUBLIC_PRIVY_APP_ID` is unset, `providers.tsx` renders children without wallet context (graceful degrade, not a crash).
 - [ ] **Step 2:** Create `components/Nav.tsx` with links: Play (lineup), Contests, Marketplace, Rentals, Packs, Portfolio, Leaderboard, Transparency — plus `<WalletButton/>`.
 - [ ] **Step 3:** Create `app/(app)/layout.tsx` rendering `<Nav/>` + `{children}` in a max-width container. Add World-Cup-themed tokens to `globals.css` `@theme` (pitch green, gold accent) — keep Tailwind v4 CSS-config (no `tailwind.config.js`). **Accessibility (§8.5):** use a **color-blind-safe** palette for stat bars / synergy indicators (never encode meaning by hue alone — pair color with icon, label, or pattern), ensure ≥4.5:1 text contrast, and add a global `:focus-visible` ring token that every interactive component reuses. Core flows (connect, lineup commit, claim) target **WCAG 2.1 AA**.
-- [ ] **Step 4: Verify** — `npm run dev`, open `http://localhost:3000`, confirm nav renders and wallet connect works via **all three** paths (OKX wallet, MetaMask, WalletConnect QR). Tab through the nav + wallet picker with the **keyboard only** (focus ring visible, every control reachable). Screenshot.
-- [ ] **Step 5: Commit** — `git add app components lib/wagmi.ts package.json package-lock.json && git commit -m "feat: app shell — nav, multi-connector wallet (OKX/MetaMask/WalletConnect), a11y theme tokens"`.
+- [ ] **Step 4: Verify** — `npm run dev`, open `http://localhost:3000`, confirm nav renders and the **Privy login modal** opens + connects (OKX Wallet / MetaMask / WalletConnect / email-embedded all reachable through Privy). Tab through the nav + wallet button with the **keyboard only** (focus ring visible, every control reachable). Screenshot.
+- [ ] **Step 5: Commit** — `git add app components globals.css && git commit -m "feat: app shell — nav, Privy wallet button, a11y theme tokens"`.
 
 ### Task 0.9: CI (typecheck, lint, test)
 
@@ -769,7 +696,7 @@ export const PLAYER_BY_APIID = new Map(PLAYERS.filter(p=>p.apiFootballId).map((p
 
 # PHASE 3 — Vertical slice in the UI (first demoable build)
 
-Goal: surface the proven on-chain loop end-to-end in the browser, backed by the indexer/Supabase + read API, with OKX gateway pre-flight on writes. This is the first thing a judge can click through: connect → onboard → commit a (minimal) lineup → enter the free contest → claim.
+Goal: surface the proven on-chain loop end-to-end in the browser, backed by the indexer/Supabase + read API, with a viem-native simulate/gas preflight on writes. This is the first thing a judge can click through: connect → onboard → commit a (minimal) lineup → enter the free contest → claim.
 
 ### Task 3.1: Read API route handlers (computed views)
 
@@ -783,21 +710,21 @@ Goal: surface the proven on-chain loop end-to-end in the browser, backed by the 
 - [ ] **Step 4: Verify** — with indexer data present, `curl 'localhost:3000/api/portfolio?wallet=<deployer>'` returns classified cards.
 - [ ] **Step 5: Commit** — `git add app/api && git commit -m "feat(api): portfolio/contests/lineup read handlers"`.
 
-### Task 3.2: Write preflight via OKX `onchain-gateway` (first OKX integration)
+### Task 3.2: Write preflight (viem-native simulate/gas) + TxButton
 
-**Files:** Create `frontend/app/api/preflight/route.ts`, `frontend/components/TxButton.tsx`.
+**Files:** Create `frontend/components/TxButton.tsx` (optionally `frontend/app/api/preflight/route.ts`).
 
-- [ ] **Step 1:** `POST /api/preflight` `{ to, data, from, value? }` → server calls `new OkxService().run(["gateway","simulate","--chain","xlayer_test","--to",to,"--data",data,"--from",from])` and `["gateway","gas","--chain","xlayer_test", ...]`; returns `{ willRevert: boolean, reason?, gas, gasPriceGwei }`. If the CLI is unavailable (no OKX env), return `{ willRevert:false, gas:null, degraded:true }` so the UI still works (documented graceful-degrade, not a mock — real call when configured).
-- [ ] **Step 2:** `components/TxButton.tsx` (`"use client"`): given a wagmi write request, first POST to `/api/preflight` (encode calldata with viem `encodeFunctionData`), show "Simulating… ✓ will succeed / ✗ will revert: <reason>" + gas estimate, then on confirm submit via `useWriteContract` and poll `waitFor`. This is the standard write UX reused by every screen.
+- [ ] **Step 1:** Preflight uses **viem** (no external service): `publicClient.simulateContract({ address, abi, functionName, args, account })` to detect whether the write will revert (catch the error → extract the revert reason via viem's `BaseError`/`ContractFunctionRevertedError`), plus `publicClient.estimateContractGas(...)` + `publicClient.getGasPrice()` for the gas estimate. This can run client-side in `TxButton`, or behind a thin `POST /api/preflight` if you prefer server-side; either way it yields `{ willRevert: boolean, reason?, gas, gasPriceGwei }`.
+- [ ] **Step 2:** `components/TxButton.tsx` (`"use client"`): given a contract write (address/abi/functionName/args), first run the viem preflight, show "Simulating… ✓ will succeed / ✗ will revert: <reason>" + gas estimate, then on confirm submit through the **Privy** wallet → a viem `WalletClient`. Add `getPrivyWalletClient(wallet)` to `lib/clients.ts`: `const provider = await wallet.getEthereumProvider(); return createWalletClient({ account: wallet.address as Address, chain: ACTIVE_CHAIN, transport: custom(provider) });` (where `wallet` is `useWallets().wallets[0]`). Call the relevant `lib/actions/writes.ts` fn with that client, then poll `waitFor`. This is the standard write UX reused by every screen (also satisfies the FR-O6 gas estimator).
 - [ ] **Step 3: Verify** — wire `TxButton` to a harmless call (USDC `faucet`), confirm the simulate badge shows and the tx submits in the browser.
-- [ ] **Step 4: Commit** — `git add app/api/preflight components/TxButton.tsx && git commit -m "feat(okx): gateway simulate/gas preflight + TxButton"`.
+- [ ] **Step 4: Commit** — `git add components/TxButton.tsx && git commit -m "feat: viem-native simulate/gas preflight + TxButton"`.
 
 ### Task 3.3: Onboarding screen + server airdrop route
 
 **Files:** Create `frontend/app/(app)/onboard/page.tsx`, `frontend/app/api/onboard/route.ts`.
 
 - [ ] **Step 1:** `POST /api/onboard` `{ wallet, signature }` — verify the signed message (anti-sybil, FR-CT9), check `onboarded` table (one per wallet) AND on-chain (no existing starter cards), then use the **minter** key (`_env` deployer = minter) to call `airdropStarterSquad(wallet, fivePlayerIds)` (5 deterministic Commons from `PLAYERS`), insert into `onboarded`. Returns `{ txHash }`. Service-role Supabase + server-only key.
-- [ ] **Step 2:** `onboard/page.tsx` (`"use client"`): connect → "Claim your free 5-card Starter Squad" → sign message → POST → show minted cards (poll `/api/portfolio`) → "Claim baseline chips" (`claimBaselineChips` via `TxButton`).
+- [ ] **Step 2:** `onboard/page.tsx` (`"use client"`): Privy `login()` → "Claim your free 5-card Starter Squad" → sign the anti-sybil message with the active Privy wallet (`useWallets().wallets[0]` → `getEthereumProvider()` → viem `signMessage`, or Privy's own `signMessage`) → POST → show minted cards (poll `/api/portfolio`) → "Claim baseline chips" (`claimBaselineChips` via `TxButton`).
 - [ ] **Step 2b: Interactive walkthrough (FR-O5/US-05 — Must).** After squad + chips are claimed, launch a guided first-lineup tutorial: a step-through coachmark overlay (lightweight, no heavy dep) that routes the user to `/play/builder`, highlights each action in order — "pick a formation → fill 11 slots → set captain/vice → (optional) chip → commit" — and finishes by entering the free contest. Persist completion in `localStorage` so it shows once; expose a "Replay tutorial" entry in Settings (Task 7.5). Do not skip — FR-O5 is a Must.
 - [ ] **Step 3: Verify** — fresh wallet: claim squad (5 cards appear), claim chips (balances 1×4), the walkthrough launches and guides the user to a committed first lineup + free-contest entry. Re-claim is rejected (one-per-wallet). Screenshot/GIF.
 - [ ] **Step 4: Commit** — `git add app/(app)/onboard app/api/onboard && git commit -m "feat: onboarding — starter squad airdrop + baseline chips + guided first-lineup walkthrough"`.
@@ -890,7 +817,7 @@ it("3 entrants: weights 15/8/5 normalized to net pool", () => {
 
 # PHASE 5 — Card economy UI + OKX security/portfolio
 
-Goal: packs, marketplace, rentals, portfolio — built on the SDK + indexer, with OKX `security` scans on marketplace and `wallet-portfolio` for public profiles.
+Goal: packs, marketplace, rentals, portfolio — built on the SDK + indexer.
 
 ### Task 5.1: SDK + API gaps for the economy
 
@@ -909,14 +836,13 @@ Goal: packs, marketplace, rentals, portfolio — built on the SDK + indexer, wit
 - [ ] **Step 2: Verify** — buy a Bronze pack, wait blocks, reveal 5 cards, they appear in portfolio. GIF.
 - [ ] **Step 3: Commit** — `git add app/(app)/packs components/PackReveal.tsx && git commit -m "feat: pack buy + reveal with animation"`.
 
-### Task 5.3: Marketplace browse/list/buy + OKX security scan
+### Task 5.3: Marketplace browse/list/buy
 
-**Files:** Create `frontend/app/(app)/market/page.tsx`, `frontend/app/(app)/market/[tokenId]/page.tsx`, `frontend/app/api/security/route.ts`.
+**Files:** Create `frontend/app/(app)/market/page.tsx`, `frontend/app/(app)/market/[tokenId]/page.tsx`.
 
-- [ ] **Step 1:** `POST /api/security` `{ kind: "tx"|"approvals", ... }` → `OkxService.run(["security","tx-scan", ...])` / `["security","approvals","--address",addr,"--chain","xlayer_test"])`. Returns risk findings.
-- [ ] **Step 2:** Browse with filters (`/api/market`); card detail shows stats/traits/tier/serial + rental availability. List flow: `approveCard(Marketplace, tokenId)` → `listForSale(tokenId, price)`. Buy flow: before signing, call `/api/security` `tx-scan` on the encoded `buy` calldata and show any warning (FR-M5 wash-trade/risk hint); approve USDC → `buyListing(tokenId)`. A "Review approvals" panel surfaces `security approvals` so users can see/revoke USDC + card allowances.
-- [ ] **Step 3: Verify** — list a card, buy from a second wallet; the security badge renders; approvals panel lists the marketplace allowance. Screenshot.
-- [ ] **Step 4: Commit** — `git add app/(app)/market app/api/security && git commit -m "feat: marketplace + OKX security tx-scan/approvals"`.
+- [ ] **Step 1:** Browse with filters (`/api/market`); card detail shows stats/traits/tier/serial + rental availability. List flow: `approveCard(Marketplace, tokenId)` → `listForSale(tokenId, price)`. Buy flow: approve USDC → `buyListing(tokenId)` (via `TxButton`, which already shows the viem simulate/gas preflight). On-chain royalty (4% platform + 1% original buyer) is enforced by the contract (FR-M3). _(FR-M5 wash-trade detection was an OKX Security integration — removed from scope; deferred.)_
+- [ ] **Step 2: Verify** — list a card, buy from a second wallet; the royalty split is reflected on-chain. Screenshot.
+- [ ] **Step 3: Commit** — `git add app/(app)/market && git commit -m "feat: marketplace browse/list/buy"`.
 
 ### Task 5.4: Rental browse/list/rent/settle/cancel
 
@@ -928,22 +854,22 @@ Goal: packs, marketplace, rentals, portfolio — built on the SDK + indexer, wit
 - [ ] **Step 2: Verify** — list a card for rent, rent from another wallet, see 4907 user set; cancel pre-lock shows 90% refund; settle post-lock pays 88/10/2 (`rentalSplit`); flip auto-list-at-floor and confirm a standing listing appears + is rentable next matchday; trigger a postponed-fixture refund path. Screenshot.
 - [ ] **Step 3: Commit** — `git add app/(app)/rentals components/RentalActions.tsx && git commit -m "feat: rental market UI (list/rent/settle/cancel, 3 modes, auto-list-at-floor, postponement refund)"`.
 
-### Task 5.5: Portfolio + public profile (OKX wallet-portfolio)
+### Task 5.5: Portfolio + public profile
 
 **Files:** Create `frontend/app/(app)/portfolio/page.tsx`, `frontend/app/(app)/u/[address]/page.tsx`, `frontend/app/api/profile/route.ts`.
 
 - [ ] **Step 1:** Portfolio: own cards, RENTING-OUT (listed/active leases), RENTING-IN, LOCKED-IN-LINEUP (`/api/portfolio`), with clear state chips (FR-R/US-13). Career stats placeholder until season data.
-- [ ] **Step 2:** `GET /api/profile?address=` → `OkxService.run(["portfolio","all-balances","--address",addr,"--chains","xlayer"])` for the wallet's on-chain holdings + our cards from the indexer → public manager profile at `/u/[address]`.
-- [ ] **Step 3: Verify** — portfolio shows all 4 states correctly across two wallets; `/u/<addr>` renders holdings. Screenshot.
-- [ ] **Step 4: Commit** — `git add app/(app)/portfolio app/(app)/u app/api/profile && git commit -m "feat: portfolio + public profile (OKX wallet-portfolio)"`.
+- [ ] **Step 2:** `GET /api/profile?address=` → the wallet's ManagerCup cards + summary stats from the **indexer** (Supabase) → public manager profile at `/u/[address]`. _(External multi-token wallet holdings via OKX wallet-portfolio were removed from scope; the profile surfaces our on-chain card holdings.)_
+- [ ] **Step 3: Verify** — portfolio shows all 4 states correctly across two wallets; `/u/<addr>` renders the wallet's cards. Screenshot.
+- [ ] **Step 4: Commit** — `git add app/(app)/portfolio app/(app)/u app/api/profile && git commit -m "feat: portfolio + public profile (from indexer)"`.
 
 **Milestone M3 reached: full card economy.**
 
 ---
 
-# PHASE 6 — Full gameplay + analytics + OKX swap/x402
+# PHASE 6 — Full gameplay + analytics
 
-Goal: the real lineup builder with live synergy/stamina/OOP feedback, the live ticker, the day-after report, plus any-token entry (dex-swap) and x402-gated premium analytics.
+Goal: the real lineup builder with live synergy/stamina/OOP feedback, the live ticker, and the day-after report.
 
 ### Task 6.1: Client synergy mirrors
 
@@ -978,16 +904,9 @@ Goal: the real lineup builder with live synergy/stamina/OOP feedback, the live t
 - [ ] **Step 2: Verify** — for the scored matchday, the report renders real numbers reproducible by the verifier. Screenshot.
 - [ ] **Step 3: Commit** — `git add app/(app)/report app/api/report && git commit -m "feat: day-after report (counterfactual, decile, captain efficiency)"`.
 
-### Task 6.5: Any-token entry (OKX dex-swap) + x402 premium analytics
+_(Task 6.5 removed — OKX dex-swap any-token entry (FR-O4) and the x402-gated premium analytics were OKX OnchainOS integrations, cut from scope. Contest entry stays USDC-direct (the always-on path); the day-after report (Task 6.4) shows all analytics with no premium gate.)_
 
-**Files:** Create `frontend/app/api/swap-quote/route.ts`, `frontend/app/api/premium/route.ts`; modify `contests/page.tsx`, `report/page.tsx`.
-
-- [ ] **Step 1:** `POST /api/swap-quote` `{ fromToken, amountReadable }` → `OkxService.run(["swap","quote","--from",fromToken,"--to","usdc","--chain","xlayer","--readable-amount",amt])`. Contest entry offers "Pay in <token>" → show route/price-impact → `swap execute` server-flow OR client tx, then `enterContest` (FR-O4). **Caveat (document in UI):** DEX liquidity may not exist on X Layer **testnet** 1952 — if `swap chains/liquidity` shows no route for 1952, gate this feature behind a "mainnet only" note and demo the quote against chain 196; keep USDC-direct entry as the always-on path. No fake routes.
-- [ ] **Step 2:** `POST /api/premium` — gate the "advanced projections" panel in the day-after report behind OKX `agent-payments-protocol` x402: return HTTP 402 with payment requirements; on payment proof (USDC via the protocol), return the premium projection. Implement the 402 handshake per the `okx-agent-payments-protocol` skill (`payment pay`/`charge`). This is the flagship agentic-payment integration.
-- [ ] **Step 3: Verify** — swap quote renders a real route (mainnet if testnet lacks liquidity); premium endpoint returns 402 then content after payment. Screenshot both.
-- [ ] **Step 4: Commit** — `git add app/api/swap-quote app/api/premium && git commit -m "feat(okx): dex-swap any-token entry + x402-gated premium analytics"`.
-
-**Milestone M4 reached: full gameplay + analytics + OKX swap/x402.**
+**Milestone M4 reached: full gameplay + analytics.**
 
 ---
 
@@ -1025,7 +944,7 @@ Goal: season aggregation + claim, the matchday cron, the transparency page (incl
 
 **Files:** Create `frontend/app/(app)/transparency/page.tsx`, `frontend/app/api/dispute/route.ts`.
 
-- [ ] **Step 1:** Document (FR-T1/T2/T3): oracle signers + threshold (read from `ScoreOracle`), data source (API-Football + which fixture), the scoring formula + the §4.2/§4.3 scalar-collapse modeling note (Phase 2), all 11 contract addresses (linked to OKLink), the verifier command + how to re-run, and a table of **which OKX OnchainOS skill powers which feature** (gateway→preflight, dex-swap→entry, security→marketplace, wallet-portfolio→profiles, agent-payments-protocol→premium) — reconciled against the real CLI capabilities recorded in `docs/OKX-CLI.md` (Task 0.7), with any unsupported capability shown as a stated limitation, not faked. Links to preserved `match_events`. Also document: **audit status** (FR-T3 — "pre-mainnet third-party audit pending; X Layer testnet only," shown alongside the deployed addresses since no audit exists yet — stated, not implied), the **unclaimed-prize rollover** policy + the escrow-lock limitation (Task 7.6), and the **same-lineup review flags** (`lineup_flags`, FR-CT10).
+- [ ] **Step 1:** Document (FR-T1/T2/T3): oracle signers + threshold (read from `ScoreOracle`), data source (API-Football + which fixture), the scoring formula + the §4.2/§4.3 scalar-collapse modeling note (Phase 2), all 11 contract addresses (linked to OKLink), the verifier command + how to re-run. Links to preserved `match_events`. Also document: **audit status** (FR-T3 — "pre-mainnet third-party audit pending; X Layer testnet only," shown alongside the deployed addresses since no audit exists yet — stated, not implied), the **unclaimed-prize rollover** policy + the escrow-lock limitation (Task 7.6), and the **same-lineup review flags** (`lineup_flags`, FR-CT10).
 - [ ] **Step 1b: Dispute reporting flow (FR-T4/US-25 — Must).** `POST /api/dispute` `{ wallet?, matchday?, contestId?, kind, message }` → validate (boundary) + insert into `disputes` via `supabaseAdmin()` (anon-insert RLS also permits it; the server route adds rate-limiting + validation). Add a "Report a disagreement" form on the transparency page (and a link from the day-after report, Task 6.4) with `kind` = score/payout/data/other; on submit show a tracking id. This is the FR-T4 Must.
 - [ ] **Step 2: Verify** — page renders live signer/threshold + addresses + OKX-skill table; submitting the dispute form inserts a `disputes` row and returns a tracking id. Screenshot.
 - [ ] **Step 3: Commit** — `git add app/(app)/transparency app/api/dispute && git commit -m "feat: transparency page (oracle, formula, addresses, OKX skills, verifier) + dispute reporting flow"`.
@@ -1034,7 +953,7 @@ Goal: season aggregation + claim, the matchday cron, the transparency page (incl
 
 **Files:** Modify `components/WalletButton.tsx`, `components/TxButton.tsx`; create `frontend/app/(app)/settings/page.tsx`.
 
-- [ ] **Step 1:** Wallet-state UX (FR-O6): Connected / Insufficient Gas (OKB) / Insufficient USDC banners (read balances; OKB via `publicClient.getBalance`); include the FR-O2/US-02 "get OKB gas via OKX exchange / on-ramp" instructions. Gas estimator on `TxButton` already from `/api/preflight gateway gas`. Settings page: faucet USDC, view chip balances, claim history, and a **"Replay tutorial"** entry (clears the `localStorage` walkthrough flag, FR-O5).
+- [ ] **Step 1:** Wallet-state UX (FR-O6): Connected / Insufficient Gas (OKB) / Insufficient USDC banners (read balances; OKB via `publicClient.getBalance`); include the FR-O2/US-02 "get OKB gas via OKX exchange / on-ramp" instructions. Gas estimator on `TxButton` already from the viem preflight (Task 3.2). Settings page: faucet USDC, view chip balances, claim history, and a **"Replay tutorial"** entry (clears the `localStorage` walkthrough flag, FR-O5).
 - [ ] **Step 2:** Run the full happy path in the browser end-to-end (connect → onboard → rent/buy/pack → build lineup → enter → live ticker → after publish → claim → report → season), capture a GIF per the hackathon demo-video bonus.
 - [ ] **Step 3: Commit** — `git add app/(app)/settings components && git commit -m "feat: wallet-state UX + gas estimator + settings"`.
 
@@ -1060,29 +979,28 @@ Per-FR, with the task that delivers it. Items NOT delivered are listed under "Ho
 
 - **Cards (FR-C1–C8):** ERC-721/4907 + tiers/caps/no-burn = deployed contracts; deterministic stats + 2 traits per player = Tasks 2.4–2.5. **FR-C6 cosmetic URI:** placeholder CID (art deferred). ✅ (C6 partial)
 - **Packs (FR-P1/P2/P4/P5):** commit-reveal buy/reveal + published rates + animation = Tasks 2.5, 5.2. **FR-P3 Diamond = v1.5 deferred.** ✅
-- **Marketplace (FR-M1/M3/M4/M5):** fixed-price + on-chain royalty + filters + OKX security scan = Tasks 5.1, 5.3. **FR-M2 auctions = v1.5 deferred.** ✅
+- **Marketplace (FR-M1/M3/M4):** fixed-price + on-chain royalty + filters = Tasks 5.1, 5.3. **FR-M2 auctions = v1.5 deferred; FR-M5 wash-trade detection (OKX Security) = removed from scope.** ✅
 - **Rentals (FR-R1–R9):** per-matchday 4907, 3 modes, 88/10/2, exclusivity, **auto-list@floor (R5, Task 5.4 Step 1b)**, DNP insurance (R6, Task 7.3), **postponement refund (R7, Task 5.4 Step 1c)**, 90% pre-lock (R8), inherited stamina (R9). ✅
 - **Gameplay (FR-G1–G8):** 6 formations + captain/VC + chips + stamina + OOP = Phase 6.2; country synergy in SDK; trait + formation synergy = Phase 2. **FR-G9/G10 = v1.5/v2 deferred.** ✅
 - **Scoring (FR-S1–S6):** real engine on real events = Phase 4; deterministic Merkle roots; live ticker (S3) via Supabase Realtime replay = 6.3; verifier CLI (S5) = 4.5; day-after report (S6) = 6.4. ✅
 - **Contests (FR-CT1/CT2/CT4/CT7/CT9):** free + Common Open = 3.4; ranked §5.2 payouts = 4.3–4.4; season = 7.1; Merkle claims throughout; on-chain 1-entry/wallet + onboarding anti-sybil = 3.3 + `ContestEscrow.enter`. **FR-CT8 rollover = Task 7.6 (treasury-funded; on-chain sweep impossible on the deployed contract — documented).** **FR-CT10 same-lineup detection = Task 4.4 Step 2b (flag-for-review).** **FR-CT3/CT5/CT6 = v1.5/v2 deferred.** ✅
-- **Onboarding/wallet (FR-O1–O6):** OKX-first connect + **WalletConnect (O2, Task 0.8)**; starter squad = 3.3; **interactive walkthrough (O5, Task 3.3 Step 2b)**; dex-swap entry (O4) = 6.5; wallet-state UX (O6) = 7.5. ✅
+- **Onboarding/wallet (FR-O1/O2/O3/O5/O6):** **Privy** login modal covers OKX Wallet (O1) + MetaMask/WalletConnect/embedded (O2) = Task 0.8; starter squad = 3.3; **interactive walkthrough (O5, Task 3.3 Step 2b)**; wallet-state UX (O6) = 7.5. **FR-O4 dex-swap entry (OKX) = removed from scope.** ✅
 - **Trust/transparency (FR-T1–T4):** transparency page + formula + addresses (T1/T3, with audit-pending stated) = 7.4; preserved `match_events` (T2); **dispute reporting flow (T4, Task 7.4 Step 1b)**; verifier = 4.5. ✅
 - **Accessibility (§8.5):** color-blind-safe palette + focus tokens (0.8); **keyboard-operable lineup builder + ARIA/live regions (6.2 Step 1b)**; WCAG 2.1 AA on core flows. ✅
-- **OKX OnchainOS (first-class):** OkxService + **capability probe (0.7)**; gateway preflight 3.2; security 5.3; wallet-portfolio 5.5; dex-swap 6.5; agent-payments x402 6.5; transparency listing 7.4. ✅
+- **OKX OnchainOS:** **removed from scope** (no `onchainos` CLI, no OKX_* keys). Wallet auth is **Privy** (OKX Wallet still available through the Privy login modal, no keys). Write preflight uses viem (3.2); marketplace has no security scan (5.3); profiles read from the indexer (5.5); contest entry is USDC-direct (6.5 removed).
 - **Read layer (PRD §8.6):** Supabase + indexer Phase 1; RLS 0.6. ✅
 - **Honestly deferred (documented, NOT claimed done):**
   - *PRD Should/Could by design:* FR-M2 auctions, FR-P3 Diamond pack, FR-CT3 Rare+/Whale tiers, FR-CT5 private leagues, FR-CT6 H2H, FR-G9 earned chips, FR-G10 bench/Bench Boost.
   - *Out of hackathon scope (stated as limitations):* FR-CT8 **on-chain** unclaimed-sweep (deployed `ContestEscrow` has no sweep fn — economic rollover only, Task 7.6); §8.3 mainnet third-party audit; §8.4 legal/geofencing/KYC; FR-C6 bulk card-art/IPFS (placeholder CID).
+  - *Removed by scope decision:* all **OKX OnchainOS** CLI integrations — FR-O4 dex-swap, FR-M5 OKX wash-trade scan, OKX wallet-portfolio profiles, gateway preflight (replaced by viem), and x402 premium analytics. OKX **Wallet** connect (FR-O1) is unaffected.
 
 ## Open items to confirm during execution
 
-1. **OKX CLI shape (broadened)** — Task 0.7 Step 5b probe verifies the real subcommand/flag shape for `gateway`/`security`/`portfolio`/`swap`/`payment` (not just `--output json`) and records it in `docs/OKX-CLI.md` BEFORE Phases 3/5/6 build on them. Any unsupported capability is a stated limitation, not a silent no-op.
-2. **DEX swap on testnet** — confirm chain-1952 liquidity (Task 6.5); if absent, swap quote demoed on mainnet 196, USDC-direct entry stays the default. No fake routes.
-3. **Demo fixture** — user to name the real finished match (drives Task 4.1 ingest + 6.3 replay) and provide `API_FOOTBALL_KEY`.
-4. **Supabase service-role key** — required for indexer/oracle/onboarding (server `.env`); not the publishable key.
-5. **Player catalog breadth** — Phase 2.4 covers the demo teams; expanding to 48×26 is mechanical content work post-demo.
-6. **WalletConnect project id** — `NEXT_PUBLIC_WC_PROJECT_ID` from WalletConnect Cloud (free) for FR-O2 (Task 0.8). Without it, OKX + MetaMask injected paths still work.
-7. **Rollover N-days + treasury float** — confirm the unclaimed-claim deadline (default 14d) and that the treasury holds enough rake to fund the rollover top-up (Task 7.6).
+1. **Demo fixture** — user to name the real finished match (drives Task 4.1 ingest + 6.3 replay) and provide `API_FOOTBALL_KEY`.
+2. **Supabase service-role key** — required for indexer/oracle/onboarding (server `.env`); not the publishable key.
+3. **Player catalog breadth** — Phase 2.4 covers the demo teams; expanding to 48×26 is mechanical content work post-demo.
+4. **Privy app id** — `NEXT_PUBLIC_PRIVY_APP_ID` from the Privy dashboard for wallet auth (FR-O1/O2, Task 0.8). Without it, `providers.tsx` renders without wallet context (no login).
+5. **Rollover N-days + treasury float** — confirm the unclaimed-claim deadline (default 14d) and that the treasury holds enough rake to fund the rollover top-up (Task 7.6).
 
 ---
 
