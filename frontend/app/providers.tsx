@@ -1,15 +1,24 @@
 "use client";
 
-import { ReactNode, useState } from "react";
-import { WagmiProvider } from "wagmi";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { wagmiConfig } from "@/lib/wagmi";
+import { ReactNode } from "react";
+import { PrivyProvider } from "@privy-io/react-auth";
+import { xLayerTestnet } from "@/lib/contracts/chain";
+
+const APP_ID = process.env.NEXT_PUBLIC_PRIVY_APP_ID ?? "";
 
 export function Providers({ children }: { children: ReactNode }) {
-  const [queryClient] = useState(() => new QueryClient());
+  if (!APP_ID) return <>{children}</>; // no app id configured — render without wallet context
   return (
-    <WagmiProvider config={wagmiConfig}>
-      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-    </WagmiProvider>
+    <PrivyProvider
+      appId={APP_ID}
+      config={{
+        defaultChain: xLayerTestnet,
+        supportedChains: [xLayerTestnet],
+        embeddedWallets: { ethereum: { createOnLogin: "users-without-wallets" } },
+        appearance: { walletChainType: "ethereum-only" },
+      }}
+    >
+      {children}
+    </PrivyProvider>
   );
 }
