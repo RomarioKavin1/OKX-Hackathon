@@ -11,6 +11,10 @@
     "test:it": "vitest run --config vitest.it.config.ts",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
+    "ingest": "tsx services/oracle/ingest.ts",
+    "publish": "tsx services/oracle/publish.ts",
+    "verify": "tsx verifier/index.ts",
+    "rollover": "tsx services/oracle/rollover.ts",
     "seed": "DRY=0 tsx scripts/seed-players.ts",
     "seed:dry": "DRY=1 tsx scripts/seed-players.ts"
   },

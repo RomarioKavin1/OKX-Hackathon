@@ -39,6 +39,7 @@ let rentalsGET: (req: NextRequest) => Promise<Response>;
 let profileGET: (req: NextRequest) => Promise<Response>;
 let disputePOST: (req: NextRequest) => Promise<Response>;
 let reportGET: (req: NextRequest) => Promise<Response>;
+let rolloverGET: (req: NextRequest) => Promise<Response>;
 
 beforeAll(async () => {
   const portfolio = await import("../portfolio/route");
@@ -49,6 +50,7 @@ beforeAll(async () => {
   const profile = await import("../profile/route");
   const dispute = await import("../dispute/route");
   const report = await import("../report/route");
+  const rollover = await import("../rollover/route");
   portfolioGET = portfolio.GET;
   contestsGET = contests.GET;
   lineupGET = lineup.GET;
@@ -57,6 +59,7 @@ beforeAll(async () => {
   profileGET = profile.GET;
   disputePOST = dispute.POST;
   reportGET = report.GET;
+  rolloverGET = rollover.GET;
 });
 
 // ---------------------------------------------------------------------------
@@ -394,5 +397,64 @@ describe("POST /api/dispute — param validation", () => {
     const body = await res.json();
     expect(body).toHaveProperty("error");
     expect(body.error).toMatch(/matchday/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Rollover (GET /api/rollover) — validation tests
+// ---------------------------------------------------------------------------
+describe("GET /api/rollover — param validation", () => {
+  it("returns 400 when contestId is a non-numeric string", async () => {
+    const req = new NextRequest("http://localhost/api/rollover?contestId=abc");
+    const res = await rolloverGET(req);
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body).toHaveProperty("error");
+    expect(body.error).toMatch(/contestId/i);
+  });
+
+  it("returns 400 when contestId is a blank string", async () => {
+    const req = new NextRequest("http://localhost/api/rollover?contestId=");
+    const res = await rolloverGET(req);
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body).toHaveProperty("error");
+    expect(body.error).toMatch(/contestId/i);
+  });
+
+  it("returns 400 when contestId is a float string", async () => {
+    const req = new NextRequest("http://localhost/api/rollover?contestId=1.5");
+    const res = await rolloverGET(req);
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body).toHaveProperty("error");
+    expect(body.error).toMatch(/contestId/i);
+  });
+
+  it("returns 400 when status is an invalid value", async () => {
+    const req = new NextRequest("http://localhost/api/rollover?status=unknown");
+    const res = await rolloverGET(req);
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body).toHaveProperty("error");
+    expect(body.error).toMatch(/status/i);
+  });
+
+  it("returns 400 when status is a blank string", async () => {
+    const req = new NextRequest("http://localhost/api/rollover?status=");
+    const res = await rolloverGET(req);
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body).toHaveProperty("error");
+    expect(body.error).toMatch(/status/i);
+  });
+
+  it("returns 400 when contestId is negative", async () => {
+    const req = new NextRequest("http://localhost/api/rollover?contestId=-1");
+    const res = await rolloverGET(req);
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body).toHaveProperty("error");
+    expect(body.error).toMatch(/contestId/i);
   });
 });
