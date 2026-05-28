@@ -1,0 +1,20 @@
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+
+# Foundry
+contracts/out/
+contracts/cache/
+contracts/broadcast/
+contracts/lib/
+
+# Node
+node_modules/
+dist/
+.next/
+.turbo/
+
+# Logs / OS
+*.log
+.DS_Store
