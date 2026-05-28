@@ -18,3 +18,7 @@ dist/
 # Logs / OS
 *.log
 .DS_Store
+
+# OKX OnchainOS agent skills (installed via `npx skills add okx/onchainos-skills`; not vendored)
+.agents/
+skills-lock.json
