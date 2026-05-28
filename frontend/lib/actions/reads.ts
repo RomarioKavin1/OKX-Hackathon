@@ -238,3 +238,14 @@ export async function userExpires(tokenId: bigint): Promise<bigint> {
     address: ADDRESSES.CardNFT, abi: CardNFTAbi, functionName: "userExpires", args: [tokenId],
   });
 }
+
+/**
+ * Whether a wallet has already claimed their payout for a specific contest.
+ * Real ABI function: claimed(uint256 contestId, address wallet) → bool  (on ContestEscrow)
+ */
+export async function contestClaimed(contestId: bigint, wallet: Address): Promise<boolean> {
+  return publicClient.readContract({
+    address: ADDRESSES.ContestEscrow, abi: ContestEscrowAbi, functionName: "claimed",
+    args: [contestId, wallet],
+  }) as Promise<boolean>;
+}
