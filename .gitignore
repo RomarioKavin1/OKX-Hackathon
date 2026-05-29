@@ -22,3 +22,6 @@ dist/
 # OKX OnchainOS agent skills (installed via `npx skills add okx/onchainos-skills`; not vendored)
 .agents/
 skills-lock.json
+
+frontend/.playwright-demo
+frontend/demo-recording

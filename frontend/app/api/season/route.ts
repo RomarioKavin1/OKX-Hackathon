@@ -24,10 +24,12 @@
 
 import type { NextRequest } from "next/server";
 import { supabaseAnonServer } from "@/lib/supabase/server";
-import {
-  SEASON_MATCHDAY_SENTINEL,
-  SEASON_CONTEST_ID,
-} from "@/services/oracle/season";
+
+// Inlined to avoid importing the oracle module (which pulls in script-only
+// deps that crash the route at module load). Keep in sync with
+// services/oracle/season.ts.
+const SEASON_MATCHDAY_SENTINEL = -1;
+const SEASON_CONTEST_ID = "season";
 
 // ── Wallet validation ─────────────────────────────────────────────────────────
 
@@ -64,10 +66,10 @@ export async function GET(request: NextRequest): Promise<Response> {
       .maybeSingle();
 
     if (error) {
-      return Response.json(
-        { error: `Database error: ${error.message}` },
-        { status: 500 },
-      );
+      // No season has been finalized yet (e.g. the numeric contest_id sentinel
+      // has no rows). Treat as "not eligible" rather than surfacing a 500.
+      console.warn(`[api/season] wallet query: ${error.message}`);
+      return Response.json({ eligible: false });
     }
 
     if (!data) {
@@ -112,10 +114,9 @@ export async function GET(request: NextRequest): Promise<Response> {
     .limit(limit);
 
   if (standingsErr) {
-    return Response.json(
-      { error: `Database error: ${standingsErr.message}` },
-      { status: 500 },
-    );
+    // Season not finalized yet → empty table, not an error.
+    console.warn(`[api/season] standings query: ${standingsErr.message}`);
+    return Response.json({ standings: [] });
   }
 
   return Response.json({
