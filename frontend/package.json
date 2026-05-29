@@ -19,7 +19,10 @@
     "replay": "tsx services/livescore/replay.ts",
     "lifecycle": "tsx services/lifecycle/cron.ts",
     "seed": "DRY=0 tsx scripts/seed-players.ts",
-    "seed:dry": "DRY=1 tsx scripts/seed-players.ts"
+    "seed:dry": "DRY=1 tsx scripts/seed-players.ts",
+    "demo": "node scripts/demo-walkthrough.mjs",
+    "indexer": "tsx services/indexer/run.ts",
+    "fix-pool": "tsx scripts/fix-pool.ts"
   },
   "dependencies": {
     "@privy-io/react-auth": "^3.27.2",
@@ -43,6 +46,7 @@
     "dotenv": "^17.4.2",
     "eslint": "^9",
     "eslint-config-next": "16.2.6",
+    "playwright": "^1.60.0",
     "tailwindcss": "^4",
     "tsx": "^4.22.3",
     "typescript": "^5",

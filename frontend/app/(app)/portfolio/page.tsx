@@ -210,19 +210,30 @@ function TierGroup({ tier, cards }: TierGroupProps) {
 
           if (!player) {
             return (
-              <Panel
+              <article
                 key={card.tokenId}
-                variant="sunken"
-                className="flex flex-col gap-1.5 p-3"
+                className="flex flex-col gap-2 overflow-hidden rounded-card border-2 border-line-2 bg-paper-2 p-3 shadow-sticker"
               >
-                <p className="truncate text-xs font-medium text-ink">
-                  {card.playerId.slice(0, 10)}...
-                </p>
-                <p className="font-mono text-[10px] text-muted">
-                  #{card.serialNumber}
-                </p>
-                <StateIndicator state={card.state} />
-              </Panel>
+                <TierBadge tier={cardTier} />
+                <div className="flex items-center gap-2">
+                  <span
+                    aria-hidden
+                    className="grid size-10 shrink-0 place-items-center rounded-full bg-paper-3 font-display text-lg text-muted"
+                  >
+                    ★
+                  </span>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-ink">Mystery Player</p>
+                    <p className="text-xs text-muted">{TIER_META[cardTier].name} card</p>
+                  </div>
+                </div>
+                <div className="mt-auto flex items-center justify-between border-t border-line pt-2">
+                  <StateIndicator state={card.state} />
+                  <span className="font-mono text-[10px] text-muted tabular-nums">
+                    #{card.serialNumber}
+                  </span>
+                </div>
+              </article>
             );
           }
 
