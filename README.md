@@ -4,8 +4,12 @@
 
 Built for the **OKX Build X Hackathon, xCup track**. Deployed on **X Layer testnet (chain `1952`)**.
 
+**▶ [Live app](https://panenka-blond.vercel.app/) · [Demo video](https://canva.link/puap3vcc1i46rqn)**
+
 | | |
 |---|---|
+| **Live app** | [panenka-blond.vercel.app](https://panenka-blond.vercel.app/) |
+| **Demo video** | [watch the walkthrough](https://canva.link/puap3vcc1i46rqn) |
 | **Track** | OKX Build X, xCup (World Cup theme) |
 | **Chain** | X Layer testnet, `1952` (Polygon CDK ZK L2, gas token OKB) |
 | **Category** | GameFi, NFT, Social |
